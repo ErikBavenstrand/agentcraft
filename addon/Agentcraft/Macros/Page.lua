@@ -31,7 +31,6 @@ local SEARCH_W = 170
 local MAX_TAG_CHIPS = 6
 
 local BOOK_LEFT = { "spellbook-Page-Left-C60", "spellbook-background-evergreen-left" }
-local BOOK_RIGHT = { "spellbook-Page-Right-C60", "spellbook-background-evergreen-right" }
 local PAGE_PREV = "Interface\\Buttons\\UI-SpellbookIcon-PrevPage"
 local PAGE_NEXT = "Interface\\Buttons\\UI-SpellbookIcon-NextPage"
 local CHECK_OK = "|TInterface\\RaidFrame\\ReadyCheck-Ready:14|t"
@@ -688,6 +687,12 @@ end
 local function MakeChip(page, parent)
   local b = CreateFrame("Button", nil, parent)
   b:SetHeight(TAG_H)
+  -- A dark plate, as the cards have: the tag row sits on the parchment's
+  -- dark top band, where neither gold nor dark ink read (capture, 0.31.0).
+  b.plate = b:CreateTexture(nil, "BACKGROUND", nil, -1)
+  b.plate:SetAllPoints()
+  b.plate:SetTexture(UI.WHITE)
+  b.plate:SetVertexColor(0.06, 0.045, 0.03, 0.92)
   b.bg = b:CreateTexture(nil, "BACKGROUND")
   b.bg:SetAllPoints()
   if not UI.SetAtlas(b.bg, UI.ART.rowActive) then b.bg:SetTexture(UI.WHITE); b.bg:SetVertexColor(1, 0.82, 0, 0.14) end
@@ -695,6 +700,7 @@ local function MakeChip(page, parent)
   local hl = b:CreateTexture(nil, "HIGHLIGHT")
   hl:SetAllPoints()
   if not UI.SetAtlas(hl, UI.ART.rowHover) then hl:SetTexture(UI.WHITE); hl:SetVertexColor(1, 1, 1, 0.08) end
+  hl:SetBlendMode("ADD")
   -- Every chip shows the Settings panel's check box (checkbox-minimal, the
   -- tick checkmark-minimal on top while the tag is on), so a chip reads as
   -- a filter toggle and turning one on never shifts the chips after it.
@@ -709,7 +715,7 @@ local function MakeChip(page, parent)
     b.box:Hide()
     b.tick:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
   end
-  b.text = UI.Text(b, "", "GameFontNormal")
+  b.text = UI.Text(b, "", "GameFontNormal")  -- gold on the chip's dark plate
   b.text:SetPoint("LEFT", 24, 0)
   b:SetScript("OnClick", function(self) if self.tagKey then ToggleTag(page, self.tagKey) end end)
   UI.Node(b, { style = "chip" })
@@ -917,15 +923,10 @@ local macrosPage = ns.RegisterPage({
       page.paper:SetPoint("TOPLEFT", 3, -3); page.paper:SetPoint("BOTTOMRIGHT", -3, 3)
     end
     page.bg = bg
-    local host = pane and pane.host
-    if host and host.CreateTexture then
-      page.right = host:CreateTexture(nil, "BACKGROUND", nil, 6)
-      page.right:SetAllPoints()
-      if not UI.SetAtlas(page.right, BOOK_RIGHT) then page.right:Hide(); page.right = nil end
-      bookRight = page.right
-    end
-    f:HookScript("OnShow", function() if page.right then page.right:Show() end end)
-    f:HookScript("OnHide", function() if page.right then page.right:Hide() end end)
+    -- No right book page under the Inspector: on light parchment the state
+    -- colours (red, orange, grey) clashed in game. The Inspector keeps the
+    -- same dark pane on every page (dev/ui-rules.md §19).
+    page.right, bookRight = nil, nil
 
     BuildSearch(page, f)
 
@@ -974,7 +975,7 @@ local macrosPage = ns.RegisterPage({
     -- right, "Page n of m · chapters" right-aligned before them (centred
     -- text moved the buttons whenever its width changed). The text never
     -- runs past its box; the client cuts it with "...".
-    page.pageText = UI.Text(nav, "", "GameFontNormal")
+    page.pageText = UI.Ink(UI.Text(nav, "", "GameFontNormal"))  -- on the parchment
     page.pageText:SetJustifyH("RIGHT")
     page.pageText:SetWordWrap(false)
     page.pageText:SetWidth(440)
@@ -1181,7 +1182,7 @@ Refresh = function(page)
     if not seen[cat] then seen[cat] = true; chapters[#chapters + 1] = CategoryTitle(cat) end
   end
   page.pageText:SetText(#shown == 0 and "" or ("Page " .. page.pageNum .. " of " .. n
-    .. (#chapters > 0 and ("  ·  " .. UI.C.HIGHLIGHT:WrapTextInColorCode(table.concat(chapters, ", "))) or "")))
+    .. (#chapters > 0 and ("  ·  " .. UI.C.INK:WrapTextInColorCode(table.concat(chapters, ", "))) or "")))
   page.prev:SetEnabled(page.pageNum > 1)
   page.next:SetEnabled(page.pageNum < n)
   page.prev:SetShown(n > 1)

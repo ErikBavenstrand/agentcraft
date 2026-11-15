@@ -44,9 +44,10 @@ Options:
 - Errors:
   - A spell with more than one home on the same device. Your racial, an `item`, a `utility` slot, a `macro` and a `flyout` count as homes too.
   - A back button that repeats a spell whose home is on controller page 2 or 3 (back buttons may mirror page-1 spells only).
-  - A flyout, `petauto` or `overflow` entry in a keyboard layout.
+  - A flyout, `petauto` or `overflow` entry in a keyboard layout (bars 1, 2 and 4: plain, Shift, Ctrl).
   - A bad controller key, or a use of the fixed Top face buttons.
   - A `macro = "X"` that is missing from the library, is retired, or belongs to another class.
+- Warning: a keyboard bar `[3]`. Bar 3 is the Alt utility bar, filled from `ActionBars.utility`, so the layout's `[3]` is never read.
 - Info:
   - A back button that repeats a page-1 home (a mirror, allowed).
   - A macro-only home, which stays empty until the macro is installed.
@@ -130,7 +131,7 @@ Steps, per page (`UI/Capture.lua`, `PageSteps`):
 | Step | State |
 | --- | --- |
 | `<page>:open` | Opens the page (flicker probe from the switch on). |
-| `<page>:view-<key>` | Each further view chip: Keyboard Shift, Alt, Side bars; Controller sets 2 and 3; Macros Everything. |
+| `<page>:view-<key>` | Each further view chip: Keyboard Shift, Ctrl, Alt, Side bars; Controller sets 2 and 3; Macros Everything. |
 | `<page>:list`, `list-focus`, `list-fold` | The Picture/HUD-List toggle; focus moved down twice (probe); a scroll list paged twice past its fold. |
 | `<page>:now` | The Now/After toggle flipped. |
 | `macros:page-2`, `macros:tag` | The book's second page; the first tag chip on. |
@@ -216,6 +217,7 @@ Each variant boots its own game (`VARIANTS` in `render.lua`) and adds a suffix t
 | `review` | `-review` | Keyboard, Controller, Macros | Review sheet open |
 | `combat` | `-combat` | Keyboard, Controller, Macros, Options | after `PLAYER_REGEN_DISABLED` |
 | `shift` | `-shift` | Keyboard | Shift held (live layer preview) |
+| `ctrl` | `-ctrl` | Keyboard | Ctrl held (live preview of Action Bar 4) |
 | `lt` | `-lt` | Controller | Gamepad UI, LT (Shift) held |
 | `ps` | `-ps` | Controller, gallery | Gamepad UI with PlayStation glyphs |
 

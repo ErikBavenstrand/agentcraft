@@ -46,6 +46,14 @@ The ground truth is an in-game capture (`/ac capture`, see dev/README.md).
 17. Gamepad focus is a pre-made highlight texture toggled on focus change, using `gamepad-*` atlases.
 18. Button prompts use Blizzard's glyph lookup (InputIconTextureFrameTemplate / input icon utils), not hard-coded glyph texture paths. Space stacked glyphs 4 px apart.
 
+## Readability and hover (owner feedback, 2026-11-15)
+
+19. The Inspector uses the same dark pane on every page; no parchment under it. UI.C colours (gold, red, orange, grey, green) are for dark backgrounds.
+    Text drawn straight on light parchment uses dark ink (`UI.Ink(fs)`, `UI.C.INK` / `UI.C.INK_DIM`), as Blizzard's parchment UIs do.
+20. [lint R12] Every HIGHLIGHT-layer texture is additive (`SetBlendMode("ADD")`). HIGHLIGHT draws above icon and text, so opaque hover art blanks the widget.
+21. [lint R13] Hover shows only the highlight and the tooltip. It never moves the focus and never changes the Inspector; a click (or a key/pad move) does.
+    The page tabs never touch the Inspector at all (`acNoInspect`).
+
 ## Sources
 
 - Blizzard_UIPanels_Game/Camelot/CharacterFrame.lua and .xml (open/close sounds, no animations)

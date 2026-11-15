@@ -80,3 +80,21 @@ test("installing macros is refused in combat", function()
   eq(#env:calls("CreateMacro"), 0, "CreateMacro calls in combat")
   ok(env:chatText():find("combat"), "says why: " .. env:chatText())
 end)
+
+test("layout rules: keyboard bar 4 (Ctrl) is checked for one home and no flyouts; [3] is ignored", function()
+  local R = H.rules
+  local function Run(kb)
+    local out = {}
+    for _, p in ipairs(R.CheckLayout({ keyboard = { HUNTER = kb } }, "HUNTER", { lib = {}, retired = {} })) do
+      out[#out + 1] = p.severity .. " " .. p.rule .. " " .. p.msg
+    end
+    return table.concat(out, "\n")
+  end
+  eq(Run({ { { "Arcane Shot" } }, { { "Mend Pet" } }, nil, { { "Viper Sting" } } }), "", "a clean Ctrl bar")
+  local two = Run({ { { "Arcane Shot" } }, {}, nil, { [3] = { "Arcane Shot" } } })
+  ok(two:find("layout-two-homes", 1, true) and two:find("Ctrl+R", 1, true), "a spell on Q and Ctrl+R: " .. two)
+  local fly = Run({ {}, {}, nil, { { flyout = 253, "Aspect of the Hawk" } } })
+  ok(fly:find("error layout-keyboard", 1, true), "a flyout on the Ctrl bar: " .. fly)
+  local three = Run({ {}, {}, { { "Arcane Shot" } } })
+  ok(three:find("warn layout-keyboard", 1, true) and not three:find("error", 1, true), "[3] warns only: " .. three)
+end)

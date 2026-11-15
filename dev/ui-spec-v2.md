@@ -53,7 +53,7 @@ Each concept scored 1-10 (10 = best; for risk, 10 = safest). Weights follow the 
 | Settings | **Options** | `options` | `settings` |
 | Right-hand pane | Inspector (never labelled in the UI) | — | — |
 | Commit sheet | "Review changes" | — | — |
-| Layer names, Keyboard | Plain, Shift, Alt, Side bars | — | — |
+| Layer names, Keyboard | Plain, Shift, Ctrl, Alt, Side bars | — | — |
 | Layer names, Controller | No trigger, Hold LT, Hold RT, Hold LT + RT (existing `BAR_TITLE`) | — | — |
 | Controller sets | 1 · Combat, 2 · Utility, 3 · Pet & Extras (from the layout titles) | — | — |
 | Back buttons | L4, L5, R4, R5, plus a "Kept free for now" caption | — | — |
@@ -259,7 +259,7 @@ All scrollable content uses **one widget**, `UI.ScrollList` (§10.2): `WowScroll
 | Change view (layer / set / scope) | **X** | Ctrl+Space | click a view-strip chip |
 | Previous / next page | **LB / RB** | Ctrl+Shift+Tab / Ctrl+Tab; Ctrl+1..5 | side tabs |
 | Scroll a list | right stick | arrows (focus scrolls); PgUp/PgDn; Home/End | wheel |
-| Preview a layer | hold LT / RT / both (Controller page) | hold Shift / Alt (Keyboard page); Shift / Ctrl (Controller page) | same keys |
+| Preview a layer | hold LT / RT / both (Controller page) | hold Shift / Ctrl / Alt (Keyboard page); Shift / Ctrl (Controller page) | same keys |
 | Cycle Blizzard windows | LT / RT tap (FCM), except on the Controller page | — | — |
 | Back paddles L4/L5/R4/R5 | **unused** (owner rule) | — | — |
 
@@ -459,7 +459,7 @@ The guard is `if ns.db.sound ~= false and SOUNDKIT and SOUNDKIT[key] then PlaySo
 | `pane:Header(icon, title, kind [, glyphKeys])` | 56 px icon in `UI-Character-Info-GearSlot`; title `GameFontNormalMed3` (wraps to 2 lines); kind line `GameFontHighlight` ("Spell · Rank 7"). `glyphKeys` such as `{"PADRTRIGGER","PAD1"}` draws "RT + A" as glyphs above the title. |
 | `pane:Section(text)` | `UI-Character-Info-Title` header |
 | `pane:Row(label, value [, color, icon])` | zebra row `UI-Character-Info-Line-Bounce` / `-Bounce2`, 24 tall; label gold, value white or coloured; optional 18 px icon |
-| `pane:Layers(list)` | one row per layer: `{label, icon, name, stateColor}`. Used for "Plain / Shift / Alt" on a key and "No trigger / LT / RT / LT+RT" on a controller button. |
+| `pane:Layers(list)` | one row per layer: `{label, icon, name, stateColor}`. Used for "Plain / Shift / Ctrl / Alt" on a key and "No trigger / LT / RT / LT+RT" on a controller button. |
 | `pane:Diff(now, after)` | two 32 px mini-slots joined by an arrow, "Now → After", in state colours |
 | `pane:Text(text)` | wrapped `GameFontHighlight`, from `C_Spell.GetSpellDescription(id)` or tooltip lines (`C_TooltipInfo.GetSpellByID` when it exists) |
 | `pane:CrossRef(list)` | "Also on: Controller RT + A (set 1)" lines. A button on each line jumps there (opens the page and focuses the node). A second home of the same spell on the same device shows in MISSING red. This makes the one-home rule visible. |
@@ -569,14 +569,14 @@ y 40     ┌──┐┌──┐┌──┐┌──┐┌──┐           
                 │Z ││X ││C ││V │    Z/X pet keys: PET edge + AutoCast ants when autocast
 y 392 ─────────────── Talents-small-divider-c60 ──────────────────────────
 y 404   Bar strip: "Action Bar 2 (Shift)" 12 × 30 px slots, slot index under each  (ignored by nav)
-y 456   hint: "Hold Shift or Alt to see that bar." (keyboard prompt mode) GameFontDisable
+y 456   hint: "Hold Shift, Ctrl or Alt to preview that layer." (keyboard prompt mode) GameFontDisable
 ```
 - Each keycap row is 4 rows × 82 px (cap 56 + caption 16 + gap 10) = 328 px, from y 40 to 368.
 - Keys outside the layout (W A S D, 5) draw at alpha .35 with only their key letter, and are not focusable. Rationale: no dead weight on the D-pad; the Inspector of a neighbour says "W A S D: movement keys, left alone".
 - No flyout badges (owner rule: plain keybinds, no flyouts). If a layout entry would resolve to a flyout, the cap shows MISSING red and the Inspector explains why.
 - After view: changed caps carry `SetMark(ADDED)` / `SetMark(REPLACES)` with the 1.2 s pulse. Waiting homes show the desaturated icon with a "…" corner.
 
-**Side bars view:** 5 strips (Action Bar 4-8) of 12 `UI.Slot` 40 px at step 46, labels on the left in `GameFontNormal`. Hidden bars show "Hidden in Edit Mode · Apply shows it" in orange. Each slot has a name caption.
+**Side bars view:** 4 strips (Action Bar 5-8; Action Bar 4 is the Ctrl layer) of 12 `UI.Slot` 40 px at step 46, labels on the left in `GameFontNormal`. Hidden bars show "Hidden in Edit Mode · Apply shows it" in orange. Each slot has a name caption.
 
 **List view** (the glance view; a `UI.ScrollList`):
 ```
@@ -589,7 +589,7 @@ Columns: key 48, then 3 × 220. One row per layout key. A row is one node; Left/
 
 **Inspector for a key** (e.g. Q):
 - Header: keycap "Q" glyph, then the spell icon and name.
-- `pane:Layers` with Plain / Shift / Alt.
+- `pane:Layers` with Plain / Shift / Ctrl / Alt.
 - Diff Now → After for the shown layer.
 - Rows: "Bar slot: Action Bar 2 · 4"; "Binding: MULTIACTIONBAR1BUTTON4".
 - Text: the description.
@@ -605,7 +605,7 @@ Columns: key 48, then 3 × 220. One row per layout key. A row is one node; Left/
 | D-pad / arrows | spatial over keycaps → mouse block → (Side bars view: strips). Right edge ↔ Inspector (jump override). Up from the top row → view strip. |
 | A / Enter | pin the key in the Inspector (B unpins) |
 | X / Ctrl+Space | cycle layer Plain → Shift → Alt → Side bars |
-| hold Shift / Alt | live preview |
+| hold Shift / Ctrl / Alt | live preview |
 | Y / Ctrl+Enter | Review & Apply (bars, then keys) |
 | LB / RB | pages |
 

@@ -181,24 +181,22 @@ end
 --   id       acId, a stable id for focus restore ("key:Q")
 --   inspect  acInspect(node, pane): fills the Inspector
 --   activate acActivate(node): what A / Enter does (default node:Click())
--- The mouse moves the focus too: OnEnter calls ns.Focus:Set(node, "mouse").
+-- Hovering never moves the focus or changes the Inspector (owner, 2026-11-15:
+-- it read as the side column flickering under the mouse); hover shows only
+-- the template highlight and the tooltip. A click focuses the node, which
+-- fills the Inspector, the same as moving there with keys or the pad.
 function UI.Node(w, opts)
   opts = opts or {}
   if not w.acNode then
     w.acNode = true
-    -- Only a mouse that moved takes the focus: a parked cursor gets OnEnter
-    -- whenever a refresh lays a new node under it (the capture showed focus
-    -- jumping to an Inspector link under an idle cursor).
-    w:HookScript("OnEnter", function(self)
+    -- A click on a node focuses it and engages the keyboard (spec 4.3):
+    -- OnMouseDown does not bubble to the window, so the frame's own hook
+    -- never sees it.
+    w:HookScript("OnMouseDown", function(self)
       local F = ns.Focus
-      if not (F and F.Set) or F.setting then return end
-      if F.MouseStill and F:MouseStill() then return end
-      F:Set(self, "mouse")
-    end)
-    -- A click on a node engages the keyboard (spec 4.3): OnMouseDown does
-    -- not bubble to the window, so the frame's own hook never sees it.
-    w:HookScript("OnMouseDown", function()
-      if ns.Focus and ns.Focus.Engage and not (InCombatLockdown and InCombatLockdown()) then ns.Focus:Engage() end
+      if not F then return end
+      if F.Set and not F.setting then F:Set(self, "click", true, true) end
+      if F.Engage and not (InCombatLockdown and InCombatLockdown()) then F:Engage() end
     end)
     w.OnSmartNavSelect = function(self) if ns.Focus and ns.Focus.Set then ns.Focus:Set(self, "pad") end end
   end
@@ -298,6 +296,18 @@ UI.C = {
   ORANGE    = Blizz("ORANGE_FONT_COLOR", 1, 0.5, 0.25),
   LIGHTBLUE = Blizz("LIGHTBLUE_FONT_COLOR", 0.53, 0.67, 1),
 }
+-- Dark ink for text drawn straight on light parchment (Blizzard's parchment
+-- UIs: QuestFont / GameFontBlack). UI.C's other colours are for dark
+-- backgrounds and clash on parchment (dev/ui-rules.md §19).
+UI.C.INK = CreateColor and CreateColor(0.18, 0.12, 0.06) or UI.C.NORMAL
+UI.C.INK_DIM = CreateColor and CreateColor(0.32, 0.24, 0.16) or UI.C.GRAY
+function UI.Ink(fs, dim)
+  if not fs then return fs end
+  local c = dim and UI.C.INK_DIM or UI.C.INK
+  fs:SetTextColor(UI.RGB(c))
+  if fs.SetShadowColor then fs:SetShadowColor(0, 0, 0, 0) end
+  return fs
+end
 -- Meanings (spec §4): use these names in page code.
 UI.C.ADDED, UI.C.MISSING, UI.C.REMOVED, UI.C.REPLACES = UI.C.GREEN, UI.C.RED, UI.C.ORANGE, UI.C.ORANGE
 UI.C.BAR, UI.C.PET, UI.C.FIXED = UI.C.NORMAL, UI.C.LIGHTBLUE, UI.C.GRAY
@@ -1125,7 +1135,7 @@ end
 
 -- n layer pips in a strip just under the icon frame (not on the art); lit
 -- (index) is the shown layer, used[i] says the layer holds something.
--- n = 0 hides them. (Keyboard page: Plain / Shift / Alt.) Each pip is a
+-- n = 0 hides them. (Keyboard page: Plain / Shift / Ctrl / Alt.) Each pip is a
 -- 10x4 bar on a dark 12x6 backing, so it reads on any background.
 function Slot:SetPips(n, lit, used)
   self.pips = self.pips or {}
@@ -1143,7 +1153,10 @@ function Slot:SetPips(n, lit, used)
     if p then
       if i <= n then
         p:ClearAllPoints()
-        p:SetPoint("TOP", self, "BOTTOM", (i - ((n + 1) / 2)) * 13, -1)
+        -- Step 13 for an odd count, 14 for an even one, so every offset is a
+        -- whole pixel (4 pips: -21, -7, 7, 21).
+        local step = n % 2 == 0 and 14 or 13
+        p:SetPoint("TOP", self, "BOTTOM", (i - ((n + 1) / 2)) * step, -1)
         local on = used == nil or (used and used[i])
         if i == lit then p:SetVertexColor(1, 0.82, 0, 1)
         elseif on then p:SetVertexColor(0.85, 0.7, 0.35, 0.8)

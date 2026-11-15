@@ -162,11 +162,15 @@ function R.CheckLayout(Layout, class, opts)
   local kb = Layout.keyboard and Layout.keyboard[class]
   if kb then
     local homes = {}
-    for bar = 1, 2 do
+    -- Keyed bars from the layout: 1 plain, 2 Shift, 4 Ctrl. Bar 3 (Alt) is
+    -- the utility bar, filled by ActionBars, so a [3] here is never read.
+    local MOD = { [1] = "", [2] = "Shift+", [4] = "Ctrl+" }
+    if kb[3] ~= nil then Add("warn", "layout-keyboard", class .. " keyboard bar 3 is the Alt utility bar (ActionBars.utility); the layout's [3] is ignored") end
+    for _, bar in ipairs({ 1, 2, 4 }) do
       local entries = kb[bar] or {}
       if #entries > 12 then Add("error", "layout-keyboard", class .. " keyboard bar " .. bar .. " has " .. #entries .. " entries; it has 12 keys") end
       for i, entry in pairs(entries) do
-        local key = (bar == 2 and "Shift+" or "") .. (KEYS[i] or ("#" .. tostring(i)))
+        local key = MOD[bar] .. (KEYS[i] or ("#" .. tostring(i)))
         CheckEntry(entry, "keyboard", class .. " keyboard " .. key)
         for _, s in ipairs(Homes(entry)) do
           if homes[s] then Add("error", "layout-two-homes", class .. " keyboard: " .. s .. " at " .. homes[s] .. " and " .. key)

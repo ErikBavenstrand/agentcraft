@@ -960,6 +960,7 @@ local VARIANTS = {
       env:runTimers(1)
     end },
   { key = "shift", suffix = "-shift", label = " (Shift held)", pages = { keyboard = true }, prepare = Hold("shift") },
+  { key = "ctrl", suffix = "-ctrl", label = " (Ctrl held)", pages = { keyboard = true }, prepare = Hold("ctrl") },
   { key = "lt", suffix = "-lt", label = " (LT held)", pages = { controller = true }, setup = Pad, db = { prompts = "pad" },
     prepare = Hold("shift") },
   { key = "ps", suffix = "-ps", label = " (PlayStation)", pages = { controller = true, gallery = true },

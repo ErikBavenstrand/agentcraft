@@ -232,6 +232,7 @@ function UI.Chips(parent, labels, onSelect, opts)
     local hl = b:CreateTexture(nil, "HIGHLIGHT")
     hl:SetAllPoints()
     if not UI.SetAtlas(hl, UI.ART.rowHover) then hl:SetTexture(UI.WHITE); hl:SetVertexColor(1, 1, 1, 0.08) end
+    hl:SetBlendMode("ADD")
     b.text = UI.Text(b, text, "GameFontNormal")
     b.text:SetPoint("CENTER")
     b:SetWidth(math.max(opts.minWidth or 56, math.ceil(b.text:GetStringWidth()) + 24))
@@ -355,9 +356,14 @@ function UI.Card(parent, w, h)
     c.panel:SetFrameLevel(math.max(c:GetFrameLevel() - 1, 0))
     c.bg:Hide()
   end
+  -- HIGHLIGHT draws above every other layer, icon and text included: drawn
+  -- opaque, the hover art blanked the whole card in game. Additive, as
+  -- Blizzard's list highlights are, it only brightens.
   local hl = c:CreateTexture(nil, "HIGHLIGHT")
   hl:SetAllPoints()
   UI.SetAtlas(hl, UI.ART.cardHover)
+  hl:SetBlendMode("ADD")
+  hl:SetAlpha(0.5)
   c.sel = c:CreateTexture(nil, "ARTWORK", nil, -1)
   c.sel:SetAllPoints()
   UI.SetAtlas(c.sel, UI.ART.cardSelected)

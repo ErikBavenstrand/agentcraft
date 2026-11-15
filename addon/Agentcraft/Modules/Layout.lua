@@ -1,8 +1,9 @@
 -- Layout: per-class layouts, designed separately for each device.
 --
 --   Keyboard: plain keybinds, no flyouts. Bar 1 = Q E R T F G C V 1 2 3 4,
---   bar 2 = Shift + the same keys. The Alt bar (consumables) and the
---   click-only side bars (everything else you know) are filled by ActionBars.
+--   bar 2 = Shift + the same keys, bar 4 = Ctrl + the same keys. Bar 3, the
+--   Alt bar (consumables), and the click-only side bars (Action Bars 5-8:
+--   everything else you know) are filled by ActionBars.
 --
 --   Controller: built for the Gamepad UI and the Steam Deck: trigger layers,
 --   radials (spell flyouts) and back buttons. Page 3 holds Deck helpers and a
@@ -74,6 +75,23 @@ L.keyboard = {
       { "Aspect of the Monkey" },                   -- Shift+2
       { "Aspect of the Cheetah" },                  -- Shift+3
       { "Aspect of the Pack" },                     -- Shift+4
+    },
+    -- [3] is the Alt bar (consumables, ActionBars.utility), not set here.
+    -- Bar 4 (Ctrl): Q E R T stings and utility shots, F G C V area and beast
+    -- control, 1 2 3 4 more aspects and pet care.
+    [4] = {
+      { "Viper Sting" },                            -- Ctrl+Q
+      { "Scorpid Sting" },                          -- Ctrl+E
+      { "Tranquilizing Shot" },                     -- Ctrl+R
+      { "Distracting Shot" },                       -- Ctrl+T
+      { "Volley" },                                 -- Ctrl+F
+      { "Flare" },                                  -- Ctrl+G
+      { "Scare Beast" },                            -- Ctrl+C
+      { "Eyes of the Beast" },                      -- Ctrl+V
+      { "Aspect of the Beast" },                    -- Ctrl+1
+      { "Aspect of the Wild" },                     -- Ctrl+2
+      { "Feed Pet" },                               -- Ctrl+3
+      { "Beast Lore" },                             -- Ctrl+4
     },
   },
 }
@@ -196,9 +214,10 @@ function L.ControllerPages(class)
   return c.pages, c.paddles
 end
 
--- { [1] = 12 entries, [2] = 12 entries } for keyboard bars 1-2.
+-- { [1] = 12 entries, [2] = 12 entries, [4] = 12 entries } for keyboard
+-- bars 1, 2 (Shift) and 4 (Ctrl). [3] stays free for the Alt utility override.
 function L.KeyboardBars(class)
   local k = L.keyboard[class]
   if not k then return nil end
-  return { k[1], k[2] }
+  return { k[1], k[2], nil, k[4] }
 end

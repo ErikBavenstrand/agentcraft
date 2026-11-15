@@ -1,6 +1,6 @@
 -- The v2 Keyboard page (dev/ui-spec-v2.md §9.2): Action Bars + Key Bindings
 -- on one keyboard. Focus moves (keys, mouse column, view strip, prompts,
--- Inspector), pin and Back, X / chips / Shift preview, the List view with
+-- Inspector), pin and Back, X / chips / Shift and Ctrl preview, the List view with
 -- scroll-follows-focus, focus surviving a view change, Review counts and
 -- Commit (never a macro), and the half-gated module states.
 local H = require("harness")
@@ -79,7 +79,7 @@ test("keyboard: A pins the key in the Inspector; B unpins before it closes", fun
   noErrors(env)
 end)
 
-test("keyboard: X cycles Plain > Shift > Alt > Side bars; Shift held previews; the Inspector shows all three layers", function()
+test("keyboard: X cycles Plain > Shift > Ctrl > Alt > Side bars; Shift held previews; the Inspector shows all four layers", function()
   local env, page = Boot()
   local UI = env.ns.UI
   eq(page.view, "plain")
@@ -88,7 +88,14 @@ test("keyboard: X cycles Plain > Shift > Alt > Side bars; Shift held previews; t
   eq(page.view, "shift", "X: Shift layer")
   eq(page.caps.Q.cell.layer, 2, "keys show the Shift layer")
   ok(page.barTitle:GetText():find("Action Bar 2", 1, true), "bar mirror follows: " .. page.barTitle:GetText())
-  UI.CycleView(1); UI.CycleView(1)
+  UI.CycleView(1)
+  eq(page.view, "ctrl", "X: Ctrl layer")
+  eq(page.caps.Q.cell.bind, "CTRL-Q", "keys show the Ctrl layer")
+  ok(page.barTitle:GetText():find("Action Bar 4 · hold Ctrl", 1, true), "bar mirror: " .. page.barTitle:GetText())
+  UI.CycleView(1)
+  eq(page.view, "alt", "X: Alt layer")
+  eq(page.caps.Q.cell.bind, "ALT-Q", "keys show the Alt layer")
+  UI.CycleView(1)
   eq(page.view, "side", "X: Side bars")
   ok(page.side:IsShown() and not page.picture:IsShown(), "side bars view shown")
   UI.CycleView(1)
@@ -107,7 +114,54 @@ test("keyboard: X cycles Plain > Shift > Alt > Side bars; Shift held previews; t
   noErrors(env)
 end)
 
-test("keyboard: List view lists every key's three layers; scroll follows focus; focus survives the view change", function()
+test("keyboard: a Ctrl tab and four pips; holding Ctrl previews Action Bar 4; a window chord pauses the Ctrl preview", function()
+  local env, page = Boot()
+  local labels = {}
+  for _, v in ipairs(page.views) do labels[#labels + 1] = v.label end
+  eq(table.concat(labels, ","), "Plain,Shift,Ctrl,Alt,Side bars", "view tabs")
+  local q = page.caps.Q
+  eq(q.pipCount, 4, "one pip per layer")
+  local shown = 0
+  for _, p in ipairs(q.pips) do if p:IsShown() then shown = shown + 1 end end
+  eq(shown, 4, "four pips shown")
+  -- Whole-pixel pips that stay inside the key's width.
+  for _, p in ipairs(q.pips) do
+    local _, _, _, x = p:GetPoint(1)
+    eq(x, math.floor(x), "pip offset is a whole pixel")
+    ok(math.abs(x) + 6 <= 28, "pip inside the 56 px key")
+  end
+  env.W.mods = env.W.mods or {}
+  env.W.mods.ctrl = true
+  page.frame.acPollModifiers()
+  eq(page.caps.Q.cell.bind, "CTRL-Q", "holding Ctrl previews the Ctrl layer")
+  eq(page.caps.Q.cell.layer, 3, "Ctrl is the third layer")
+  ok(page.barTitle:GetText():find("Action Bar 4", 1, true) and page.barTitle:GetText():find("(preview)", 1, true), page.barTitle:GetText())
+  eq(page.view, "plain", "the chip stays")
+  -- Ctrl+Space (the window's view chord) while Ctrl is held: the new tab
+  -- shows, not the Ctrl preview.
+  env.G.AgentcraftKeyView:Click()
+  eq(page.view, "shift", "Ctrl+Space moved to the Shift tab")
+  eq(page.caps.Q.cell.bind, "SHIFT-Q", "the chord's result shows while Ctrl is still held")
+  env.W.mods.ctrl = false
+  page.frame.acPollModifiers()
+  eq(env.ns.Input.ctrlChord, nil, "releasing Ctrl ends the pause")
+  env.W.mods.ctrl = true
+  page.frame.acPollModifiers()
+  eq(page.caps.Q.cell.bind, "CTRL-Q", "the next Ctrl press previews again")
+  env.W.mods.ctrl = false
+  page.frame.acPollModifiers()
+  eq(page.caps.Q.cell.bind, "SHIFT-Q", "release returns to the tab")
+  -- Alt wins over Ctrl.
+  env.W.mods.ctrl, env.W.mods.alt = true, true
+  page.frame.acPollModifiers()
+  eq(page.caps.Q.cell.bind, "ALT-Q", "Alt over Ctrl")
+  env.W.mods.ctrl, env.W.mods.alt = false, false
+  page.frame.acPollModifiers()
+  eq(#env:calls("SetBinding"), 0, "preview binds nothing")
+  noErrors(env)
+end)
+
+test("keyboard: List view lists every key's four layers; scroll follows focus; focus survives the view change", function()
   local env, page = Boot()
   local Focus = env.ns.Focus
   Focus:Set(page.caps.E, "key")
@@ -120,6 +174,12 @@ test("keyboard: List view lists every key's three layers; scroll follows focus; 
   local list = page.list
   local rows = list:Nodes()
   eq(#rows, 17, "one row per key (12 bar keys, Z X, three mouse buttons)")
+  local heads = {}
+  for _, fs in ipairs(page.colHeads) do heads[#heads + 1] = fs:GetText() end
+  eq(table.concat(heads, ","), "Key,Plain,Shift,Ctrl,Alt", "four layer columns")
+  local cellsShown = 0
+  for _, b in ipairs(rows[1]:GetParent().cells or {}) do if b:IsShown() then cellsShown = cellsShown + 1 end end
+  eq(cellsShown, 4, "four cells a row")
   Focus:Move("RIGHT")
   eq(Focus.current.acId, "list:E:2", "Right: the Shift cell of the same key")
   Focus:Move("DOWN")

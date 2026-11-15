@@ -494,7 +494,8 @@ function Focus:Set(node, source, quiet, noScroll)
   local gen = self.gen
   -- A node inside the Inspector never re-inspects: the pane keeps explaining
   -- what was focused before, so its buttons and links stay where they are.
-  if not self.pinned and self.lastZone ~= "inspector" then
+  -- Neither does a node marked acNoInspect (the page tabs).
+  if not self.pinned and self.lastZone ~= "inspector" and not node.acNoInspect then
     After(0.12, function() if gen == self.gen and self.current == node then self:Inspect(node) end end)
   end
   if source ~= "mouse" and ns.Setting and ns.Setting("focusTips") and node.acTip then
@@ -795,7 +796,13 @@ local function Hidden(name, fn, device)
     if InCombat() then return end
     -- A window chord engages the keyboard (spec 4.3), so the arrows that
     -- follow go to the window, not to the character.
-    if device == "keyboard" then Focus:Engage() end
+    -- Input.ctrlChord: a Ctrl chord ran while Ctrl is still held. The
+    -- Keyboard page skips its Ctrl layer preview until Ctrl is released (it
+    -- clears the flag), so the chord's result shows, not the Ctrl layer.
+    if device == "keyboard" then
+      Focus:Engage()
+      if IsControlKeyDown and IsControlKeyDown() then Input.ctrlChord = true end
+    end
     fn()
   end)
   b:Hide()

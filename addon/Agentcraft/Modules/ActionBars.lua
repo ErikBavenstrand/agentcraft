@@ -6,12 +6,15 @@
 -- Keyed bars (keys come from the Keybinds module):
 --   slot:  1 2 3 4 5 6 7 8 9 10 11 12
 --   key:   Q E R T F G C V 1 2  3  4
---   Bar 1 = key, Bar 2 = Shift+key, Bar 3 = Alt+key (utilities, all classes)
--- Click-only side bars, grouped automatically from your spellbook:
---   Right bar   = pet spells, then other class spells not on a keyed bar
---   Right bar 2 = tracking, then professions
---   Action Bars 6-8 (modern clients only) take what doesn't fit, class
---   spells first. Without them, professions, then tracking, then pet
+--   Bar 1 = key, Bar 2 = Shift+key, Bar 3 = Alt+key (utilities, all classes),
+--   Bar 4 = Ctrl+key
+-- Click-only side bars, grouped automatically from your spellbook (a spell
+-- on a keyed bar never shows here too: one home per spell):
+--   Action Bar 5 = pet spells, then other class spells not on a keyed bar
+--   Action Bar 6 = tracking, then professions
+--   Action Bars 7-8 take what doesn't fit, class spells first.
+--   Action Bars 6-8 count only when the client has them. Without them,
+--   everything shares Action Bar 5: professions, then tracking, then pet
 --   utilities give up their slot before a class spell does.
 -- Spells/items you don't have yet are skipped; apply again after training
 -- or when you get new items.
@@ -22,10 +25,12 @@ local M = ns.RegisterModule("ActionBars", {
   description = "Fills your keyboard action bars from your class layout.",
 })
 
--- First action slot of each keyed bar: bar 1 = 1-12,
--- bar 2 (bottom left) = 61-72, bar 3 (bottom right) = 49-60.
-local BAR_OFFSET = { 0, 60, 48 }
-local RIGHT_BAR, RIGHT_BAR_2 = 24, 36 -- slots 25-36 and 37-48
+-- First action slot of each keyed bar: bar 1 = 1-12, bar 2 (bottom
+-- left) = 61-72, bar 3 (bottom right) = 49-60, bar 4 (right) = 25-36.
+local BAR_OFFSET = { 0, 60, 48, 24 }
+-- Keyed bars filled from the layout (bar 3 is the utility bar).
+local LAYOUT_BARS = { 1, 2, 4 }
+local SIDE_BAR = 36 -- Action Bar 5 (right 2), slots 37-48: the first side bar
 
 -- Action Bars 6-8 of the modern client (slots 145-180). Classic clients
 -- have no such bars, so they count only when their frame exists. A bar is
@@ -50,7 +55,8 @@ local function ExtraBarHidden(b)
 end
 
 -- Per-class keyboard layouts for classes without a role layout in Layout.lua:
---   M.profiles.<CLASS> = { { 12 spell names for bar 1 }, { 12 for bar 2 }, [3] = utility override }
+--   M.profiles.<CLASS> = { { 12 spell names for bar 1 }, { 12 for bar 2 }, [3] = utility override,
+--                          [4] = { 12 for bar 4, the Ctrl layer } }
 -- Classes with a role layout (Layout.lua) use it instead, shared with the controller.
 M.profiles = {}
 
@@ -294,7 +300,7 @@ local SPECIAL_LABEL = { food = "Best food you carry", drink = "Best drink you ca
   trinket1 = "On-use trinket (top)", trinket2 = "On-use trinket (bottom)" }
 local function UtilityLabel(entry)
   if type(entry) == "string" then return SPECIAL_LABEL[entry] or entry end
-  return entry[#entry] .. " (or better)"
+  return entry[#entry]  -- the weakest item; its state line says a better one counts too
 end
 
 -- Placement ----------------------------------------------------------------
@@ -314,9 +320,9 @@ end
 local function PlaceSpell(slot, id) PickupSpellID(id); PlaceAction(slot); ClearCursor() end
 local function PlaceItem(slot, id) PickupItemID(id); if GetCursorInfo() then PlaceAction(slot) end; ClearCursor() end
 
--- Bars 1-2 come from the shared role layout (Layout.lua) when the class has
--- one, so keyboard and controller agree; otherwise from M.profiles.
--- Returns { [1] = entries, [2] = entries, [3] = utility override }.
+-- Bars 1, 2 and 4 come from the shared role layout (Layout.lua) when the
+-- class has one, so keyboard and controller agree; otherwise from M.profiles.
+-- Returns { [1] = entries, [2] = entries, [3] = utility override, [4] = entries }.
 local function Profile()
   local _, class = UnitClass("player")
   local bars = ns.Layout and ns.Layout.KeyboardBars(class)
@@ -326,8 +332,8 @@ local function Profile()
     return bars, class
   end
   if not legacy then return nil, class end
-  local out = { {}, {}, legacy[3] }
-  for bar = 1, 2 do
+  local out = { {}, {}, legacy[3], {} }
+  for _, bar in ipairs(LAYOUT_BARS) do
     for i, name in pairs(legacy[bar] or {}) do out[bar][i] = { name } end
   end
   return out, class
@@ -347,10 +353,10 @@ end
 -- Slots Apply and Undo manage: bars 1-5, plus the given Action Bars 6-8.
 local function ManagedSlots(extra)
   local slots = {}
-  for bar = 1, 3 do
+  for bar = 1, 4 do
     for i = 1, 12 do table.insert(slots, BAR_OFFSET[bar] + i) end
   end
-  for s = RIGHT_BAR + 1, RIGHT_BAR_2 + 12 do table.insert(slots, s) end
+  for i = 1, 12 do table.insert(slots, SIDE_BAR + i) end
   for _, b in ipairs(extra or {}) do
     for i = 1, 12 do table.insert(slots, b.first + i) end
   end
@@ -383,13 +389,14 @@ local function SavedExtraBars()
   return list
 end
 
--- Learned spells not on a keyed bar, split into the two side-bar lists and
--- the Action Bar 6-8 lists. Returns right, right2, the name -> spell ID map
--- the lists draw from, extra (one 12-slot list per available Action Bar
--- 6-8), dropped (names that fit nowhere) and the available extra bars.
+-- Learned spells not on a keyed bar, split over the side bars. Returns side
+-- (Action Bar 5's list), the name -> spell ID map the lists draw from, extra
+-- (one 12-slot list per available Action Bar 6-8: tracking and professions
+-- on Action Bar 6, overflow on 7-8), dropped (names that fit nowhere) and
+-- the available extra bars.
 local function SideBars(profile, known)
   local used = {}
-  for bar = 1, 2 do
+  for _, bar in ipairs(LAYOUT_BARS) do
     for _, entry in pairs(profile[bar] or {}) do
       -- Only the spell a home picked is placed; the alternatives it skipped
       -- still need a home. A macro home places its spell and covers = { ... }.
@@ -424,7 +431,7 @@ local function SideBars(profile, known)
   -- More spells than slots: the least needed give up their slot first
   -- (professions, then tracking, then pet utilities), never a class spell.
   local extraBars = ExtraBars()
-  local room = 24 + 12 * #extraBars
+  local room = 12 + 12 * #extraBars
   local dropped = {}
   local total = #pet + #other + #tracking + #prof
   while total > room do
@@ -437,19 +444,28 @@ local function SideBars(profile, known)
   for _, n in ipairs(other) do table.insert(right, n) end
   for _, n in ipairs(tracking) do table.insert(right2, n) end
   for _, n in ipairs(prof) do table.insert(right2, n) end
+  local extra = {}
+  if #extraBars == 0 then
+    -- Only Action Bar 5: tracking and professions follow the class spells
+    -- (the drops above made it all fit).
+    for _, n in ipairs(right2) do table.insert(right, n) end
+    return right, ids, extra, dropped, extraBars
+  end
   -- Spill extras from one side bar into free room on the other.
   while #right > 12 and #right2 < 12 do table.insert(right2, table.remove(right)) end
-  -- The rest goes to Action Bars 6-8, the Right bar's class spells first.
+  while #right2 > 12 and #right < 12 do table.insert(right, table.remove(right2)) end
+  -- The rest goes to Action Bars 7-8, Action Bar 5's class spells first.
   local rest, rest2 = {}, {}
   while #right > 12 do table.insert(rest, 1, table.remove(right)) end
   while #right2 > 12 do table.insert(rest2, 1, table.remove(right2)) end
   for _, n in ipairs(rest2) do table.insert(rest, n) end
-  local extra = {}
-  for b = 1, #extraBars do
+  extra[1] = {}
+  for i = 1, 12 do extra[1][i] = right2[i] end
+  for b = 2, #extraBars do
     extra[b] = {}
-    for i = 1, 12 do extra[b][i] = rest[(b - 1) * 12 + i] end
+    for i = 1, 12 do extra[b][i] = rest[(b - 2) * 12 + i] end
   end
-  return right, right2, ids, extra, dropped, extraBars
+  return right, ids, extra, dropped, extraBars
 end
 
 -- Spellbook index of a flyout, by flyout ID (for undo).
@@ -518,7 +534,7 @@ local function Apply()
   if not profile then return ns.Print("no profile for " .. class .. " yet.") end
   local known = KnownSpells()
   local bags, bagList = BagItems()
-  local right, right2, ids, extra, dropped, extraBars = SideBars(profile, known)
+  local side, ids, extra, dropped, extraBars = SideBars(profile, known)
   local used = UsedExtraBars(extra, extraBars)
   local slots = ManagedSlots(used)
 
@@ -552,7 +568,7 @@ local function Apply()
 
   local missing = {}
   local C = ns.modules.controller
-  for bar = 1, 2 do
+  for _, bar in ipairs(LAYOUT_BARS) do
     for i = 1, 12 do
       local entry = profile[bar] and profile[bar][i]
       local slot = BAR_OFFSET[bar] + i
@@ -574,11 +590,8 @@ local function Apply()
     end
   end
 
-  for i, name in ipairs(right) do
-    if not keep[RIGHT_BAR + i] then PlaceSpell(RIGHT_BAR + i, ids[name]) end
-  end
-  for i, name in ipairs(right2) do
-    if not keep[RIGHT_BAR_2 + i] then PlaceSpell(RIGHT_BAR_2 + i, ids[name]) end
+  for i, name in ipairs(side) do
+    if not keep[SIDE_BAR + i] then PlaceSpell(SIDE_BAR + i, ids[name]) end
   end
   local hidden = {}
   for b, bar in ipairs(extraBars) do
@@ -631,20 +644,22 @@ local function Undo()
 end
 
 local KEY_LABELS = { "Q", "E", "R", "T", "F", "G", "C", "V", "1", "2", "3", "4" }
+local BAR_MOD = { [2] = "Shift", [3] = "Alt", [4] = "Ctrl" }
 
 local function Show()
   local profile, class = Profile()
   if not profile then return ns.Print("no profile for " .. class .. " yet.") end
   local known = KnownSpells()
   local bags, bagList = BagItems()
-  for bar = 1, 2 do
-    print("|cffffd100Bar " .. bar .. (bar == 2 and " (Shift)" or "") .. "|r")
+  for _, bar in ipairs(LAYOUT_BARS) do
+    local mod = BAR_MOD[bar]
+    print("|cffffd100Bar " .. bar .. (mod and (" (" .. mod .. ")") or "") .. "|r")
     for i = 1, 12 do
       local entry = profile[bar] and profile[bar][i]
       if entry then
         local item = ResolveEntry(entry, known)
         local what = item.missing and ("|cff888888" .. item.missing .. " (not learned)|r") or item.name
-        print("  " .. (bar == 2 and "Shift+" or "") .. KEY_LABELS[i] .. " -> " .. what)
+        print("  " .. (mod and (mod .. "+") or "") .. KEY_LABELS[i] .. " -> " .. what)
       end
     end
   end
@@ -658,13 +673,13 @@ local function Show()
       print("  Alt+" .. KEY_LABELS[i] .. " -> " .. what)
     end
   end
-  local right, right2, _, extra, dropped, extraBars = SideBars(profile, known)
-  print("|cffffd100Right bar (click: pet, other)|r  " .. table.concat(right, ", "))
-  print("|cffffd100Right bar 2 (click: tracking, professions)|r  " .. table.concat(right2, ", "))
+  local side, _, extra, dropped, extraBars = SideBars(profile, known)
+  print("|cffffd100Action Bar 5 (click: pet, other" .. (#extraBars == 0 and ", tracking, professions" or "") .. ")|r  " .. table.concat(side, ", "))
   for b, bar in ipairs(extraBars) do
     local names = {}
     for i = 1, 12 do if extra[b][i] then names[#names + 1] = extra[b][i] end end
-    if #names > 0 then print("|cffffd100" .. bar.label .. " (click)|r  " .. table.concat(names, ", ")) end
+    local what = b == 1 and "click: tracking, professions" or "click"
+    if #names > 0 then print("|cffffd100" .. bar.label .. " (" .. what .. ")|r  " .. table.concat(names, ", ")) end
   end
   if #dropped > 0 then print("|cff888888No room (stay in the spellbook):|r  " .. table.concat(dropped, ", ")) end
 end
@@ -681,16 +696,19 @@ local ROWS = {
   { label = "Action Bar 1", sub = nil,     command = "ACTIONBUTTON",          first = BAR_OFFSET[1] },
   { label = "Action Bar 2", sub = "Shift", command = "MULTIACTIONBAR1BUTTON", first = BAR_OFFSET[2] },
   { label = "Action Bar 3", sub = "Alt",   command = "MULTIACTIONBAR2BUTTON", first = BAR_OFFSET[3] },
-  { label = "Action Bar 4", sub = nil,     command = "MULTIACTIONBAR3BUTTON", first = RIGHT_BAR },
-  { label = "Action Bar 5", sub = nil,     command = "MULTIACTIONBAR4BUTTON", first = RIGHT_BAR_2 },
+  { label = "Action Bar 4", sub = "Ctrl",  command = "MULTIACTIONBAR3BUTTON", first = BAR_OFFSET[4] },
+  { label = "Action Bar 5", sub = nil,     command = "MULTIACTIONBAR4BUTTON", first = SIDE_BAR },
 }
+-- Plan rows 1-4 are the keyed bars (row = bar number); the side bars start here.
+local SIDE_FIRST_ROW = 5
+local KEYED_ROW = { [1] = true, [2] = true, [4] = true } -- filled from the layout (3 = utilities)
 
 function M.Plan()
   local profile, class = Profile()
   if not profile then return nil, class end
   local known = KnownSpells()
   local bags, bagList = BagItems()
-  local right, right2, ids, extra, dropped, extraBars = SideBars(profile, known)
+  local side, ids, extra, dropped, extraBars = SideBars(profile, known)
   local used = UsedExtraBars(extra, extraBars)
   local utility = profile[3] or M.utility
   local plan = { changes = 0, spellsMissing = 0, itemsMissing = 0, macrosMissing = 0, kept = 0,
@@ -707,7 +725,7 @@ function M.Plan()
     local entries = {}
     for i = 1, 12 do
       local e = { slot = row.first + i }
-      if r <= 2 then
+      if KEYED_ROW[r] then
         local entry = profile[r] and profile[r][i]
         if entry then
           local item = ResolveEntry(entry, known)
@@ -734,7 +752,7 @@ function M.Plan()
           e.kind, e.id, e.name = "item", id, id and ItemInfo(id) or UtilityLabel(entry)
         end
       else
-        local name = (row.extra or (r == 4 and right or right2))[i]
+        local name = (row.extra or side)[i]
         if name then e.kind, e.id, e.name = "spell", ids[name], name end
       end
       local cur, curID = GetActionInfo(e.slot)
@@ -761,12 +779,14 @@ end
 -- Keyboard page (dev/ui-spec-v2.md §9.2) ---------------------------------------
 -- One page for Action Bars and Key Bindings: a keyboard you can read at a
 -- glance. Each key shows the icon and the name of what it casts on the shown
--- layer (Plain, Shift, Alt), the mouse buttons hold the pet commands, and the
--- Side bars view shows the click-only bars. The List view puts every key's
--- three layers side by side as icon + name. Holding Shift or Alt previews that
--- layer; nothing is bound or consumed by the preview. Apply goes through the
--- Review sheet and runs Action Bars Apply, then Key Bindings Apply; neither
--- ever creates a macro.
+-- layer (Plain, Shift, Ctrl, Alt), the mouse buttons hold the pet commands,
+-- and the Side bars view shows the click-only bars (Action Bars 5-8). The
+-- List view puts every key's four layers side by side as icon + name.
+-- Holding Shift, Ctrl or Alt previews that layer; nothing is bound or
+-- consumed by the preview. A window chord (Ctrl+Space, Ctrl+Tab...) pauses
+-- the Ctrl preview until Ctrl is released, so the chord's result shows.
+-- Apply goes through the Review sheet and runs Action Bars Apply, then Key
+-- Bindings Apply; neither ever creates a macro.
 
 M.Apply, M.Undo = Apply, Undo
 
@@ -775,12 +795,17 @@ local function Keybinds() return ns.modules.keybinds end
 local function Active(key) local m = ns.ModuleOf(key); return m ~= nil and m.active == true end
 local NOT_BOUND_TEXT = NOT_BOUND or "Not bound"
 
+-- The four key layers in display order (tabs, pips, List columns, the
+-- Inspector). bar = the action bar the layer fires, which is also its plan row.
 local LAYERS = {
-  { key = "plain", label = "Plain", prefix = "",       mod = nil,     title = "Action Bar 1" },
-  { key = "shift", label = "Shift", prefix = "SHIFT-", mod = "Shift", title = "Action Bar 2" },
-  { key = "alt",   label = "Alt",   prefix = "ALT-",   mod = "Alt",   title = "Action Bar 3" },
+  { key = "plain", label = "Plain", prefix = "",       mod = nil,     bar = 1, title = "Action Bar 1" },
+  { key = "shift", label = "Shift", prefix = "SHIFT-", mod = "Shift", bar = 2, title = "Action Bar 2" },
+  { key = "ctrl",  label = "Ctrl",  prefix = "CTRL-",  mod = "Ctrl",  bar = 4, title = "Action Bar 4" },
+  { key = "alt",   label = "Alt",   prefix = "ALT-",   mod = "Alt",   bar = 3, title = "Action Bar 3" },
 }
-local LAYER_OF_VIEW = { plain = 1, shift = 2, alt = 3 }
+local LAYER_OF_VIEW, LAYER_OF_BAR = {}, {}
+for li, l in ipairs(LAYERS) do LAYER_OF_VIEW[l.key], LAYER_OF_BAR[l.bar] = li, li end
+local LAYER_SHIFT, LAYER_CTRL, LAYER_ALT = LAYER_OF_VIEW.shift, LAYER_OF_VIEW.ctrl, LAYER_OF_VIEW.alt
 
 -- The keyboard as it looks: four staggered rows (stagger in px, spec §9.2).
 local KEY_ROWS = {
@@ -794,7 +819,7 @@ local MOUSE_LABEL = { BUTTON3 = "M3", BUTTON4 = "M4", BUTTON5 = "M5" }
 local MOUSE_NAME = { BUTTON3 = "Middle mouse button", BUTTON4 = "Mouse button 4", BUTTON5 = "Mouse button 5" }
 -- Every key the List view lists, in layout order, in three groups.
 local LIST_GROUPS = {
-  { title = "Action Bars 1-3 · same 12 keys", keys = { "Q", "E", "R", "T", "F", "G", "C", "V", "1", "2", "3", "4" } },
+  { title = "Action Bars 1-4 · same 12 keys", keys = { "Q", "E", "R", "T", "F", "G", "C", "V", "1", "2", "3", "4" } },
   { title = "Pet abilities", keys = { "Z", "X" } },
   { title = "Mouse · pet commands", keys = MOUSE },
 }
@@ -906,7 +931,7 @@ end
 
 -- Everything the page shows, gathered once per Refresh.
 local function Gather(page)
-  local d = { ab = Active("ActionBars"), kb = Active("Keybinds"), cells = { {}, {}, {} } }
+  local d = { ab = Active("ActionBars"), kb = Active("Keybinds"), cells = { {}, {}, {}, {} } }
   d.plan = M.Plan()
   local K = Keybinds()
   d.layout = K and K.Layout and K.Layout() or {}
@@ -983,7 +1008,7 @@ local function StateText(c)
   if a.state == "waiting" then
     local e = c.entry
     if e and e.kind == "macro" then return "Waiting: install " .. (e.item and e.item.macro or a.name) .. " in Macros", UI.C.MISSING end
-    if e and e.kind == "item" then return "Waiting: none in your bags", UI.C.MISSING end
+    if e and e.kind == "item" then return "Waiting: none in your bags (or a better one)", UI.C.MISSING end
     return "Waiting: learn " .. a.name, UI.C.MISSING
   end
   if a.state == "clear" then return "Cleared when you apply", UI.C.REMOVED end
@@ -1137,7 +1162,7 @@ local function ModeLink(page, base, layer, slot)
       page.mode = 1
       if slot then id = "side:" .. slot
       else
-        local view = (layer == 2 and "shift") or (layer == 3 and "alt") or "plain"
+        local view = LAYERS[layer or 1] and LAYERS[layer or 1].key or "plain"
         if page.view ~= view then page.view = view end
         id = "key:" .. base
       end
@@ -1171,7 +1196,7 @@ local function InspectCell(pane, page, c)
   end
   pane:Section(KeyLabel(c.base) .. " on every layer")
   local layers = {}
-  for l = 1, 3 do
+  for l = 1, #LAYERS do
     local cc = Cell(page, c.base, l)
     local vv = after and cc.after or cc.now
     layers[l] = { label = LAYERS[l].label, icon = vv.icon, name = (vv.state == "unbound" and NOT_BOUND_TEXT or (vv.name or ""):gsub(" %(or better%)$", "")), color = NameColor(cc, after) }
@@ -1192,7 +1217,7 @@ local function InspectCell(pane, page, c)
   if v.name and (v.state == "same" or v.state == "new") and v.kind ~= "pet" then
     for _, grp in ipairs(LIST_GROUPS) do
       for _, base in ipairs(grp.keys) do
-        for l = 1, 3 do
+        for l = 1, #LAYERS do
           local o = Cell(page, base, l)
           local ov = after and o.after or o.now
           if o ~= c and o.managed and ov.name == v.name and ov.kind == v.kind then
@@ -1329,10 +1354,25 @@ local BAR_Y = 412                       -- the action bar mirror's title
 -- Side bars: the bar's name on a line above its 12 slots, so the slots get
 -- the full width and their captions 54 px ("Smelting", "Humanoids" fit).
 local SIDE_SLOT, SIDE_STEP, SIDE_ROW = 40, 56, 88
-local CELL_X, CELL_W = 72, 200          -- List view columns
+-- List view columns: the 30 px keycap at x 8, then four layer columns
+-- (4 x 156 = 624, ending at 672 in the 696 px list, clear of its scroll bar).
+local CELL_X, CELL_W = 48, 156
+
+-- The layer the held modifiers preview (page.mods = { shift, ctrl, alt },
+-- from UI.WatchModifiers), or nil. Alt wins over Ctrl, Ctrl over Shift.
+-- While a window chord's Ctrl is still held (ns.Input.ctrlChord, set by
+-- Ctrl+Space, Ctrl+Tab...), nothing is previewed, so the chord's result
+-- (a new layer tab, a new page) shows instead of the Ctrl layer.
+local function PreviewLayer(page)
+  local m = page.mods
+  if not m then return nil end
+  local shift, ctrl, alt = m[1], m[2], m[3]
+  if ctrl and ns.Input and ns.Input.ctrlChord then return nil end
+  return (alt and LAYER_ALT) or (ctrl and LAYER_CTRL) or (shift and LAYER_SHIFT) or nil
+end
 
 local function ShownLayer(page)
-  return page.preview or LAYER_OF_VIEW[page.view or "plain"] or 1
+  return PreviewLayer(page) or LAYER_OF_VIEW[page.view or "plain"] or 1
 end
 
 -- Picture view --------------------------------------------------------------------------------
@@ -1350,12 +1390,12 @@ local function FillCap(page, s)
   s:SetEdge(after and c.edge or (c.pet and UI.C.PET) or nil)
   s:SetBadge(c.flyout and "flyout" or nil)
   local used = {}
-  for l = 1, 3 do
+  for l = 1, #LAYERS do
     local cc = Cell(page, base, l)
     local vv = after and cc.after or cc.now
     used[l] = vv.icon ~= nil
   end
-  s:SetPips(3, li, used)
+  s:SetPips(#LAYERS, li, used)
   -- Only on change: ShowAutoCastEnabled restarts the ants, so a call on
   -- every fill (each modifier press) made them jump.
   local auto = c.pet ~= nil and PetAutoCast(c.pet) and true or false
@@ -1501,12 +1541,12 @@ local function FillPicture(page)
   local li = ShownLayer(page)
   local after = page.after == 2
   page.barTitle:SetText(LAYERS[li].title .. (LAYERS[li].mod and (" · hold " .. LAYERS[li].mod) or " · no modifier")
-    .. (page.preview and "  (preview)" or ""))
+    .. (PreviewLayer(page) and "  (preview)" or ""))
   local K = Keybinds()
   local keys = K and K.KEYS or {}
   local d = page.data
   for i, s in ipairs(page.barSlots) do
-    local slot = BAR_OFFSET[li] + i
+    local slot = BAR_OFFSET[LAYERS[li].bar] + i
     local e = d.ab and d.slots[slot]
     local v
     if after and e then v = AfterOfEntry(e) else local dd = UI.DescribeSlot(slot); v = { icon = dd.icon, state = "same" } end
@@ -1516,9 +1556,10 @@ local function FillPicture(page)
     s:SetKey(keys[i] or "")
   end
   local pad = UI.PadMode and UI.PadMode()
-  page.hint:SetText(pad and ("Hold " .. PadName("PADLTRIGGER") .. " to preview the Shift layer. "
+  page.hint:SetText(pad and ("Hold " .. PadName("PADLTRIGGER") .. " or " .. PadName("PADRTRIGGER")
+      .. " to preview the Shift or Ctrl layer. "
       .. PadName("PAD3") .. " changes the layer.")
-    or "Hold Shift or Alt to preview that layer. Ctrl+Space changes the layer.")
+    or "Hold Shift, Ctrl or Alt to preview that layer. Ctrl+Space changes the layer.")
 end
 
 -- Side bars view ------------------------------------------------------------------------------
@@ -1530,7 +1571,7 @@ local function BuildSide(page, stage)
   g:SetAllPoints()
   page.side = g
   page.sideRows = {}
-  for r = 1, #ROWS - 3 + #EXTRA_BARS do
+  for r = 1, #ROWS - SIDE_FIRST_ROW + 1 + #EXTRA_BARS do
     local row = CreateFrame("Frame", nil, g)
     row:SetPoint("TOPLEFT", 8, -(42 + (r - 1) * SIDE_ROW))
     row:SetPoint("TOPRIGHT", -8, -(42 + (r - 1) * SIDE_ROW))
@@ -1580,7 +1621,7 @@ local function FillSide(page)
   local after = page.after == 2
   local k = 0
   for r, row in ipairs(page.sideRows) do
-    local def = plan and plan.rows[r + 3]
+    local def = plan and plan.rows[r + SIDE_FIRST_ROW - 1]
     row:SetShown(def ~= nil)
     if def then
       k = k + 1
@@ -1588,7 +1629,7 @@ local function FillSide(page)
       if def.hidden then row.sub:SetText("Hidden in Edit Mode"); row.sub:SetTextColor(UI.RGB(UI.C.REPLACES))
       else row.sub:SetText("Click only"); row.sub:SetTextColor(UI.RGB(UI.C.GRAY)) end
       for i, s in ipairs(row.slots) do
-        local e = plan[r + 3][i]
+        local e = plan[r + SIDE_FIRST_ROW - 1][i]
         s.entry, s.slot = e, e.slot
         s.acId = "side:" .. e.slot
         local v
@@ -1612,7 +1653,7 @@ local function FillSide(page)
   page.sideHint:SetText(table.concat(notes, "\n"))
 end
 
--- List view: every key's three layers as icon + name (or the side bars, three slots a row) ----
+-- List view: every key's four layers as icon + name (or the side bars, four slots a row) ----
 
 local function CellInspect(cell, pane)
   local page, d = cell.page, cell.data
@@ -1638,7 +1679,7 @@ end
 -- Picture/List and Now/After toggles at the strip's right end.
 local function ListCellUp(cell)
   local page, list = cell.page, cell.page.list
-  if not (list and list.data and cell.acIndex) or cell.acCol == 3 then return nil end
+  if not (list and list.data and cell.acIndex) or cell.acCol == #LAYERS then return nil end
   for i, d in ipairs(list.data) do
     if not d.header then
       if i == cell.acIndex then return SelectedChip(page) end
@@ -1669,7 +1710,7 @@ local function MakeListRow(page)
     r.cap = UI.Keycap(r, "", 30)
     r.cap:SetPoint("LEFT", 8, 0)
     r.cells = {}
-    for c = 1, 3 do
+    for c = 1, #LAYERS do
       local b = CreateFrame("Button", nil, r)
       b:SetPoint("TOPLEFT", r, "TOPLEFT", CELL_X + (c - 1) * CELL_W, -2)
       b:SetSize(CELL_W - 6, 40)
@@ -1682,7 +1723,7 @@ local function MakeListRow(page)
       b.slot:EnableMouse(false)
       b.slot.acSkip = true
       UI.MarkIgnored(b.slot)
-      b.name = UI.Text(b, "", "GameFontHighlight")
+      b.name = UI.Text(b, "", "GameFontHighlightSmall") -- four columns: 106 px names, two lines
       b.name:SetPoint("LEFT", b.slot, "RIGHT", 8, 0)
       b.name:SetPoint("RIGHT", b, "RIGHT", -2, 0)
       b.name:SetJustifyH("LEFT")
@@ -1696,7 +1737,7 @@ local function MakeListRow(page)
       b.navUp = ListCellUp
       b.acCol = c
       b.SetPinned = SetPinnedHighlight
-      if c == 3 then b.navRight = ToInspector end
+      if c == #LAYERS then b.navRight = ToInspector end
       r.cells[c] = b
     end
     return r
@@ -1763,19 +1804,20 @@ end
 
 local function ListData(page)
   local rows = {}
+  local n = #LAYERS -- side slots per row match the key view's columns
   if page.view == "side" then
     local plan = page.data.plan
     if not plan then return rows end
-    for r = 4, #plan.rows do
+    for r = SIDE_FIRST_ROW, #plan.rows do
       local def = plan.rows[r]
       rows[#rows + 1] = { header = true, text = def.label .. (def.hidden and " · hidden in Edit Mode" or " · click only") }
-      for g = 0, 3 do
+      for g = 0, 12 / n - 1 do
         local cells = {}
-        for c = 1, 3 do
-          local e = plan[r][g * 3 + c]
+        for c = 1, n do
+          local e = plan[r][g * n + c]
           cells[c] = { side = true, entry = e, slot = e.slot }
         end
-        rows[#rows + 1] = { capText = (g * 3 + 1) .. "-" .. (g * 3 + 3), cells = cells }
+        rows[#rows + 1] = { capText = (g * n + 1) .. "-" .. (g * n + n), cells = cells }
       end
     end
     return rows
@@ -1783,11 +1825,19 @@ local function ListData(page)
   for _, grp in ipairs(LIST_GROUPS) do
     rows[#rows + 1] = { header = true, text = grp.title }
     for _, base in ipairs(grp.keys) do
-      rows[#rows + 1] = { capText = KeyLabel(base), base = base,
-        cells = { { base = base, layer = 1 }, { base = base, layer = 2 }, { base = base, layer = 3 } } }
+      local cells = {}
+      for li = 1, n do cells[li] = { base = base, layer = li } end
+      rows[#rows + 1] = { capText = KeyLabel(base), base = base, cells = cells }
     end
   end
   return rows
+end
+
+-- Column heads: Key, then each layer in display order.
+local function ListHeads(side)
+  local heads = { side and "Slots" or "Key" }
+  for li, l in ipairs(LAYERS) do heads[li + 1] = side and "" or l.label end
+  return heads
 end
 
 local function BuildList(page, stage)
@@ -1796,8 +1846,7 @@ local function BuildList(page, stage)
   g:SetPoint("BOTTOMRIGHT", -8, 8)
   page.listFrame = g
   page.colHeads = {}
-  local heads = { "Key", "Plain", "Shift", "Alt" }
-  for c, text in ipairs(heads) do
+  for c, text in ipairs(ListHeads(false)) do
     local fs = UI.Text(g, text, "GameFontNormal")
     fs:SetPoint("TOPLEFT", c == 1 and 10 or (CELL_X + (c - 2) * CELL_W + 4), -4)
     fs:SetJustifyH("LEFT")
@@ -1829,7 +1878,7 @@ end
 local function FillList(page)
   local side = page.view == "side"
   local li = ShownLayer(page)
-  local heads = side and { "Slots", "", "", "" } or { "Key", "Plain", "Shift", "Alt" }
+  local heads = ListHeads(side)
   for c, fs in ipairs(page.colHeads) do
     fs:SetText(heads[c])
     fs:SetFontObject((not side and c - 1 == li) and "GameFontHighlight" or "GameFontNormal")
@@ -1839,12 +1888,13 @@ end
 
 -- Review / Commit ----------------------------------------------------------------------------
 
--- "Shift+E" for a keyed slot, "Action Bar 4 · 3" for a side slot.
+-- "Shift+E" for a keyed slot, "Action Bar 5 · 3" for a side slot.
 local function SlotKeyLabel(e)
-  if e.r and e.r <= 3 then
+  local li = e.r and LAYER_OF_BAR[e.r]
+  if li then
     local K = Keybinds()
     local key = K and K.KEYS and K.KEYS[e.i]
-    if key then return Chord(key, e.r) end
+    if key then return Chord(key, li) end
   end
   return (SlotText(e.slot):gsub(" · button ", " · "))
 end
@@ -1890,8 +1940,11 @@ local function Groups(page)
       if b.key then
         local cur = GetBindingAction(b.key) or ""
         if cur ~= b.command then
-          local base = b.key:gsub("^SHIFT%-", ""):gsub("^ALT%-", "")
-          local li = b.key:find("^SHIFT%-") and 2 or b.key:find("^ALT%-") and 3 or 1
+          local base, li = b.key, 1
+          for l, layer in ipairs(LAYERS) do
+            local p = layer.prefix
+            if p ~= "" and b.key:sub(1, #p) == p then base, li = b.key:sub(#p + 1), l end
+          end
           local c = Cell(page, base, li)
           keys[#keys + 1] = { key = KeyChord(b.key), nowIcon = c.now.icon, nowName = c.now.name,
             afterIcon = c.after.icon, afterName = c.after.name,
@@ -1908,7 +1961,7 @@ local function Groups(page)
   -- Keys whose shown content changes (any layer) flash after Apply.
   for _, grp in ipairs(LIST_GROUPS) do
     for _, base in ipairs(grp.keys) do
-      for l = 1, 3 do
+      for l = 1, #LAYERS do
         if Cell(page, base, l).changed then
           ids[#ids + 1] = "key:" .. base
           ids[#ids + 1] = "list:" .. base .. ":" .. l
@@ -1966,10 +2019,11 @@ ns.RegisterPage({
   view = "plain",
   module = { "ActionBars", "Keybinds" },
   aliases = { "bars", "keys" },
-  description = "Your action bars and key bindings as one keyboard. Every key shows what it casts on each layer: plain, with Shift, and with Alt.",
+  description = "Your action bars and key bindings as one keyboard. Every key shows what it casts on each layer: plain, with Shift, with Ctrl and with Alt.",
   views = {
     { key = "plain", label = "Plain" }, { key = "shift", label = "Shift" },
-    { key = "alt", label = "Alt" }, { key = "side", label = "Side bars" },
+    { key = "ctrl", label = "Ctrl" }, { key = "alt", label = "Alt" },
+    { key = "side", label = "Side bars" },
   },
   viewLabel = "Layer",
   toggles = {
@@ -2018,9 +2072,13 @@ ns.RegisterPage({
     BuildSide(p, stage)
     BuildList(p, stage)
 
-    -- Live layer preview: Shift / Alt (LT on the Gamepad UI is Shift). Display only.
-    UI.WatchModifiers(stage, function(shift, _, alt)
-      local want = (alt and 3) or (shift and 2) or nil
+    -- Live layer preview: Shift / Ctrl / Alt (LT on the Gamepad UI is
+    -- Shift, RT is Ctrl). Display only.
+    UI.WatchModifiers(stage, function(shift, ctrl, alt)
+      p.mods = { shift, ctrl, alt }
+      -- Ctrl let go: the next Ctrl press previews again after a chord.
+      if not ctrl and ns.Input then ns.Input.ctrlChord = nil end
+      local want = PreviewLayer(p)
       if want == p.preview then return end
       p.preview = want
       if not p.data or p.view == "side" then return end
@@ -2085,7 +2143,7 @@ ns.RegisterPage({
     local done, total = 0, 0
     for _, grp in ipairs(LIST_GROUPS) do
       for _, base in ipairs(grp.keys) do
-        for l = 1, 3 do
+        for l = 1, #LAYERS do
           local c = Cell(p, base, l)
           if c.managed and not c.waiting and c.after.state ~= "empty" and c.after.state ~= "unbound" then
             total = total + 1
@@ -2095,7 +2153,7 @@ ns.RegisterPage({
       end
     end
     if d.ab and d.plan then
-      for r = 4, #d.plan.rows do
+      for r = SIDE_FIRST_ROW, #d.plan.rows do
         for i = 1, 12 do
           local e = d.plan[r][i]
           if e.state == "same" or e.state == "new" then
@@ -2149,8 +2207,8 @@ ns.RegisterPage({
       pane:Row("Waiting to learn", tostring(waiting), waiting > 0 and UI.C.MISSING or nil)
     end
     pane:Section("How it works")
-    pane:Text("The same 12 keys work on every bar: plain is Action Bar 1, Shift is Action Bar 2 and Alt is Action Bar 3 (your best consumables). Pet abilities sit on Z and X, pet commands on the mouse buttons.")
-    pane:Text("Move to a key to see all three layers. " .. PadName("PAD1") .. " or Enter pins it here.", UI.C.GRAY)
+    pane:Text("The same 12 keys work on every bar: plain is Action Bar 1, Shift is Action Bar 2, Ctrl is Action Bar 4 and Alt is Action Bar 3 (your best consumables). Spells without a key sit on the side bars, Action Bars 5-8. Pet abilities sit on Z and X, pet commands on the mouse buttons.")
+    pane:Text("Move to a key to see all four layers. " .. PadName("PAD1") .. " or Enter pins it here.", UI.C.GRAY)
     pane:Buttons(RestoreButtons())
   end,
 

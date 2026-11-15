@@ -115,3 +115,15 @@ test("uilint: function boundaries survive if/while/for/repeat blocks", function(
   }, "\n")
   eq(Ids(src), "R7@6")
 end)
+
+test("uilint: R12 HIGHLIGHT textures are additive", function()
+  eq(Ids('local hl = c:CreateTexture(nil, "HIGHLIGHT")\nhl:SetAllPoints()'), "R12@1")
+  eq(Ids('local hl = c:CreateTexture(nil, "HIGHLIGHT")\nhl:SetAllPoints()\nhl:SetBlendMode("ADD")'), "")
+  eq(Ids('local t = c:CreateTexture(nil, "ARTWORK")'), "")
+end)
+
+test("uilint: R13 hover never moves the focus or fills the Inspector", function()
+  eq(Ids('w:HookScript("OnEnter", function(self)\n  ns.Focus:Set(self, "mouse")\nend)'), "R13@1")
+  eq(Ids('w:HookScript("OnEnter", function(self)\n  pane:Inspect(self)\nend)'), "R13@1")
+  eq(Ids('w:HookScript("OnEnter", function(self) self:acTip() end)\nw:HookScript("OnMouseDown", function(self) ns.Focus:Set(self, "click") end)'), "")
+end)

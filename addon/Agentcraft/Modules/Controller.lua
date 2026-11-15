@@ -204,7 +204,7 @@ function M.Resolve(entry, known, used)
     local spec = AB and AB.utility and AB.utility[entry.utility]
     local id = spec and AB.ResolveUtilityItem(spec)
     if id then return { kind = "item", id = id, name = C_Item.GetItemNameByID(id) or ("item " .. id) } end
-    return { missing = type(spec) == "table" and (spec[#spec] .. " (or better)") or tostring(spec), reason = "carry" }
+    return { missing = type(spec) == "table" and spec[#spec] or tostring(spec), reason = "carry" }
   end
   for _, n in ipairs(entry) do
     local id = KnownID(n, known)

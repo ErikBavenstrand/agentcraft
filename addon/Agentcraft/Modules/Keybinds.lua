@@ -6,10 +6,12 @@ local _, ns = ...
 local M = ns.RegisterModule("Keybinds", {
   title = "Key Bindings",
   order = 20,
-  description = "One key layout for Action Bars 1–3 and the pet bar.",
+  description = "One key layout for Action Bars 1–4 and the pet bar.",
 })
 
--- Same keys on bars 1-3; Shift picks bar 2, Alt picks bar 3 (utilities).
+-- Same keys on bars 1-4: plain picks bar 1, Shift bar 2, Alt bar 3
+-- (utilities), Ctrl bar 4. CTRL-1..4 take over Blizzard's default pet bar
+-- keys; the pet bar lives on the mouse and Z/X instead (PET below).
 -- Slots: Q E R T | F G | C V | 1 2 3 4  (keyboard rows, number row last)
 local KEYS = { "Q", "E", "R", "T", "F", "G", "C", "V", "1", "2", "3", "4" }
 
@@ -18,6 +20,7 @@ local BARS = {
   { label = "Bar 1",           prefix = "",       command = "ACTIONBUTTON",          keys = KEYS },
   { label = "Bar 2",           prefix = "SHIFT-", command = "MULTIACTIONBAR1BUTTON", keys = KEYS },
   { label = "Bar 3 (utilities)", prefix = "ALT-", command = "MULTIACTIONBAR2BUTTON", keys = KEYS },
+  { label = "Bar 4",           prefix = "CTRL-",  command = "MULTIACTIONBAR3BUTTON", keys = KEYS },
 }
 
 -- Pet bar slots (Classic): 1 Attack, 2 Follow, 3 Stay, 4-7 abilities,
@@ -83,15 +86,17 @@ local function Apply()
   local layout = Layout()
 
   -- Keep the very first backup, so undo always returns to your original binds.
+  -- A button or key the layout gained since (such as bar 4, the Ctrl layer)
+  -- joins the backup the first time Apply manages it: an earlier Apply
+  -- never touched it, so what it holds now is still your own bind.
   local store, set = Store()
-  if not store.backup then
-    local backup = { commands = {}, keys = {}, set = set }
-    for _, b in ipairs(layout) do
-      backup.commands[b.command] = { GetBindingKey(b.command) }
-      if b.key then backup.keys[b.key] = GetBindingAction(b.key) end
-    end
-    store.backup = backup
+  local backup = store.backup or { commands = {}, keys = {}, set = set }
+  backup.commands, backup.keys = backup.commands or {}, backup.keys or {}
+  for _, b in ipairs(layout) do
+    if backup.commands[b.command] == nil then backup.commands[b.command] = { GetBindingKey(b.command) } end
+    if b.key and backup.keys[b.key] == nil then backup.keys[b.key] = GetBindingAction(b.key) end
   end
+  store.backup = backup
 
   -- Clear every key on the managed commands so nothing is left double-bound.
   for _, b in ipairs(layout) do

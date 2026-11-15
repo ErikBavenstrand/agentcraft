@@ -154,12 +154,13 @@ local function Zebra(tex, index)
   end
 end
 
--- Moves the focus to row when the mouse enters one of its child controls
--- (check box, slider, steppers, button), so the Inspector follows.
-local function FocusOnEnter(row, child)
+-- Moves the focus to row when one of its child controls (check box,
+-- slider, steppers, button) is clicked, so the Inspector follows. Hover
+-- alone never changes the Inspector (see UI.Node).
+local function FocusOnClick(row, child)
   if type(child) ~= "table" or not child.HookScript then return end
-  child:HookScript("OnEnter", function()
-    if ns.Focus and ns.Focus.Set then ns.Focus:Set(row, "mouse") end
+  child:HookScript("OnMouseDown", function()
+    if ns.Focus and ns.Focus.Set and not ns.Focus.setting then ns.Focus:Set(row, "click", true, true) end
   end)
 end
 
@@ -228,7 +229,7 @@ local function RowBox(r, side)
   end
   if side == "right" then box:SetPoint("RIGHT", r, "RIGHT", -6, 0) else box:SetPoint("LEFT", r, "LEFT", 6, 0) end
   box:SetScript("OnClick", function() r:Click() end)
-  FocusOnEnter(r, box)
+  FocusOnClick(r, box)
   UI.MarkIgnored(box)
   r.box = box
   return box
@@ -391,7 +392,7 @@ local function Arrow(r, atlas, text)
     b.fs = UI.Text(b, text, "GameFontNormal")
     b.fs:SetPoint("CENTER")
   end
-  FocusOnEnter(r, b)
+  FocusOnClick(r, b)
   UI.MarkIgnored(b)
   return b
 end
@@ -421,7 +422,7 @@ local function ChoiceSetting(page, parent, key, y, zebra, choices, onChange)
     end, 140)
     r.dropdown:SetPoint("RIGHT", r, "RIGHT", -10, 0)
     r.label:SetPoint("RIGHT", r.dropdown, "LEFT", -8, 0)
-    FocusOnEnter(r, r.dropdown)
+    FocusOnClick(r, r.dropdown)
     UI.MarkIgnored(r.dropdown)
   else
     r.next = Arrow(r, "Minimal_SliderBar_Button_Right", ">")
@@ -488,10 +489,10 @@ local function ScaleRow(page, parent, y, zebra)
   r.slider:SetPoint("RIGHT", r, "RIGHT", -46, 0)
   r.label:SetPoint("RIGHT", r.slider, "LEFT", -8, 0)
   -- SmartNavigation lands on the row, not on the slider or its steppers.
-  if type(r.slider.Slider) == "table" then UI.MarkIgnored(r.slider.Slider); FocusOnEnter(r, r.slider.Slider) end
-  FocusOnEnter(r, r.slider)
-  FocusOnEnter(r, r.slider.Back)
-  FocusOnEnter(r, r.slider.Forward)
+  if type(r.slider.Slider) == "table" then UI.MarkIgnored(r.slider.Slider); FocusOnClick(r, r.slider.Slider) end
+  FocusOnClick(r, r.slider)
+  FocusOnClick(r, r.slider.Back)
+  FocusOnClick(r, r.slider.Forward)
   r:SetScript("OnClick", function()
     UI.SetScale(nil)
     UI.Sound("view")
@@ -523,7 +524,7 @@ local function ResetRow(page, parent, y, zebra)
   b:SetHeight(24)
   UI.FitButton(b, 84)
   b:SetPoint("RIGHT", r, "RIGHT", -8, 0)
-  FocusOnEnter(r, b)
+  FocusOnClick(r, b)
   UI.MarkIgnored(b)
   r.button = b
   r.label:SetPoint("RIGHT", b, "LEFT", -8, 0)
@@ -574,7 +575,7 @@ local function ToolRow(page, parent, g, a, y, zebra)
   UI.FitButton(b, 84)
   b:SetPoint("RIGHT", r, "RIGHT", -8, 0)
   b:SetScript("OnClick", function() UI.RunAction(a.fn) end)
-  FocusOnEnter(r, b)
+  FocusOnClick(r, b)
   UI.MarkIgnored(b)
   r.button = b
   r.label:SetFontObject("GameFontHighlightSmall")

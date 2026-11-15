@@ -580,7 +580,7 @@ Refresh = function()
     local node = Focus:Validate()
     -- Focus inside the Inspector keeps showing what was inspected before it.
     local subject = node
-    if node and Focus.ZoneOf(node) == "inspector" then
+    if node and (Focus.ZoneOf(node) == "inspector" or node.acNoInspect) then
       subject = Focus.inspected
       if subject and not Focus.Usable(subject) then subject = nil end
     end
@@ -918,6 +918,7 @@ local function BuildTabs()
     for i, t in ipairs(topBar.Tabs) do
       t.page = list[i]
       UI.Node(t, { style = "button", id = "tab:" .. list[i].id })
+      t.acInspect, t.acNoInspect = nil, true  -- tabs never touch the Inspector (owner, 2026-11-15)
       tabs[i] = t
     end
     return
@@ -963,6 +964,7 @@ local function BuildTabs()
     t:SetScript("OnClick", function() Select(p) end)
     UI.Tooltip(t, function() return p.title end, function() return Resolve(p.description, p) end)
     UI.Node(t, { style = "button", id = "tab:" .. p.id })
+    t.acInspect, t.acNoInspect = nil, true  -- tabs never touch the Inspector (owner, 2026-11-15)
     tabs[i] = t
   end
   local function TabGlyph(key, anchorTab, above)

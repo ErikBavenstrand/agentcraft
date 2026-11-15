@@ -20,6 +20,8 @@ M.RULES = {
   R9 = { id = "dataprovider-reset", sev = "ERROR" },
   R10 = { id = "tint-stock-art", sev = "WARN" },
   R11 = { id = "round-layout", sev = "ERROR" },
+  R12 = { id = "opaque-highlight", sev = "ERROR" },
+  R13 = { id = "hover-focus", sev = "ERROR" },
 }
 
 -- Tokenizer ----------------------------------------------------------------------------
@@ -626,6 +628,40 @@ function M.LintSource(src, rel, ctx)
     end
     if not found and not Suppressed(comments, 1) then
       add("R11", 1, "UI/Window.lua never calls SetRoundLayoutToNearestPixel / PixelUtil.SetRoundLayoutToNearestPixelRecursively on the window root (ui-rules 5)")
+    end
+  end
+
+  -- R12: a HIGHLIGHT-layer texture draws above icon and text; unless it is
+  -- additive it blanks what it covers (the macro cards in game).
+  -- R12 and R13 read the raw source lines: CodeLines blanks strings, and both
+  -- rules look for string arguments ("HIGHLIGHT", "ADD", "OnEnter").
+  local raw = {}
+  for text in (src .. "\n"):gmatch("([^\n]*)\n") do raw[#raw + 1] = text end
+  for l, text in ipairs(raw) do
+    local var = text:match("([%w_%.]+)%s*=%s*[%w_%.]+:CreateTexture%(%s*nil%s*,%s*\"HIGHLIGHT\"")
+    if var and not Suppressed(comments, l) then
+      local esc = var:gsub("%p", "%%%0")
+      local ok = false
+      for k = l, math.min(l + 12, #raw) do
+        if (raw[k] or ""):find(esc .. ":SetBlendMode%(%s*\"ADD\"%s*%)") then ok = true break end
+      end
+      if not ok then add("R12", l, var .. " is a HIGHLIGHT texture without SetBlendMode(\"ADD\"): opaque hover art covers the icon and text (ui-rules 20)") end
+    end
+  end
+
+  -- R13: hovering never moves the focus or fills the Inspector; a click does.
+  for l, text in ipairs(raw) do
+    if text:find("\"OnEnter\"", 1, true) and not Suppressed(comments, l) then
+      -- A one-line handler ("function(self) ... end)") ends on its own line.
+      local last = text:find("end%)%s*$") and l or math.min(l + 8, #raw)
+      for k = l, last do
+        local t = raw[k] or ""
+        if t:find("Focus:Set%(") or t:find("Focus%.Set%(") or t:find(":Inspect%(") then
+          add("R13", l, "an OnEnter handler moves the focus or fills the Inspector; hover shows only highlight and tooltip, a click focuses (ui-rules 21)")
+          break
+        end
+        if k > l and t:match("^%s*end%)") then break end
+      end
     end
   end
 

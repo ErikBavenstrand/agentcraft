@@ -618,14 +618,19 @@ function Test-Layout($lib, $retired) {
     foreach ($class in $kbt.Hash.Keys) {
       $layout = $kbt.Hash[$class]
       $homes = @{}
-      foreach ($bar in 1, 2) {
+      # Keyed bars from the layout: 1 plain, 2 Shift, 4 Ctrl. Bar 3 (Alt) is the
+      # utility bar, filled by ActionBars, so a [3] here is never read.
+      $bar3 = Get-Bar $layout 3
+      if ($bar3) { Add-Finding WARN layout-keyboard "${rel}:$($bar3.Line)" "$class keyboard bar 3 is the Alt utility bar (ActionBars.utility); the layout's [3] is ignored" }
+      $kbMod = @{ 1 = ''; 2 = 'Shift+'; 4 = 'Ctrl+' }
+      foreach ($bar in 1, 2, 4) {
         $entries = Get-Bar $layout $bar
         if (-not $entries) { continue }
         if ($entries.Arr.Count -gt 12) { Add-Finding ERROR layout-keyboard "${rel}:$($entries.Line)" "$class keyboard bar $bar has $($entries.Arr.Count) entries; it has 12 keys" }
         if ($entries.Hash.Count -gt 0) { Add-Finding WARN layout-keyboard "${rel}:$($entries.Line)" "$class keyboard bar $bar has keyed entries ($($entries.Hash.Keys -join ', ')); only the 12-entry list is read" }
         for ($i = 0; $i -lt $entries.Arr.Count; $i++) {
           $e = $entries.Arr[$i]
-          $key = $(if ($bar -eq 2) { 'Shift+' } else { '' }) + $KbKeys[$i]
+          $key = $kbMod[$bar] + $KbKeys[$i]
           $where = "${rel}:$($e.Line)"
           Test-Entry $e $class 'keyboard' $where "$class keyboard $key" $lib $retired
           if ($e -is [LuaTable]) {

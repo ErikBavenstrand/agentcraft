@@ -31,7 +31,7 @@ test("capture: the step list covers every page, view, sheet, focus move and the 
   ok(DC, "ns.DevCapture exists")
   local steps = DC.BuildSteps("all")
   local n = Names(steps)
-  for _, name in ipairs({ "keyboard:open", "keyboard:view-shift", "keyboard:view-alt", "keyboard:view-side",
+  for _, name in ipairs({ "keyboard:open", "keyboard:view-shift", "keyboard:view-ctrl", "keyboard:view-alt", "keyboard:view-side",
     "keyboard:list", "keyboard:list-fold", "keyboard:now", "keyboard:review", "keyboard:review-fold",
     "keyboard:focus-first", "keyboard:focus-right", "keyboard:focus-down",
     "controller:open", "controller:view-2", "controller:view-3", "controller:list", "controller:review",
@@ -141,5 +141,13 @@ test("capture: refuses in combat, and stops when combat starts", function()
   local n = #shots
   env:runTimers(60)
   eq(#shots, n)
+  noErrors(env)
+end)
+
+test("capture: the keyboard's Ctrl view comes right after Shift", function()
+  local env = Boot()
+  local order = {}
+  for i, s in ipairs(env.ns.DevCapture.BuildSteps("keyboard")) do order[s.name] = i end
+  ok(order["keyboard:view-shift"] and order["keyboard:view-ctrl"] == order["keyboard:view-shift"] + 1, "view-ctrl follows view-shift")
   noErrors(env)
 end)
