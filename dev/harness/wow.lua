@@ -21,6 +21,10 @@ M.MISSING = {
   GetItemInfo = true, GetTalentInfo = true, UnitCharacterPoints = true,
   GetSpellBookItemName = true, GetNumSpellTabs = true, GetSpellTabInfo = true,
   GetContainerNumSlots = true, GetContainerItemID = true, GetContainerItemInfo = true,
+  -- Moved into C_Spell / C_Item / C_AddOns / C_SpellBook / C_UnitAuras in 11.0.
+  GetSpellInfo = true, GetSpellTexture = true, PickupSpell = true, PickupItem = true, EquipItemByName = true,
+  GetAddOnMetadata = true, UnitBuff = true, UnitAura = true, GetItemIcon = true, GetItemSpell = true,
+  GetSpellBookItemInfo = true,
 }
 
 local unpack = unpack or rawget(table, "unpack")  -- a global in Lua 5.1 / LuaJIT
@@ -70,7 +74,7 @@ function M.NewWorld(fixture)
     calls = {},       -- calls.CreateMacro = { {n=4, name, icon, body, perChar}, ... }
     chat = {},        -- every print()
     errors = {},      -- errors raised from event handlers and timers
-    macros = {},      -- { {name=, icon=, body=, perChar=}, ... }; index = position
+    macros = {},      -- { {name=, icon=, body=, perChar=}, ... } in any order (see MacroOrder)
     actions = {},     -- [slot] = { type = "spell"|"item"|"macro"|"flyout", id = n }
     bindings = {},    -- [key] = "SPELL Arcane Shot" / "MACRO Pull" / "ACTIONBUTTON1"
     cursor = nil,     -- { type =, id = } or nil
@@ -88,96 +92,28 @@ end
 -- issecretvalue() says true, but arithmetic, comparison and concatenation
 -- raise. W.secret = true makes health, power, attack power, ranged damage,
 -- crit, dodge and auras secret; primary stats and armor stay readable.
-local SecretMT = {}
+-- Secrets are userdata (newproxy), so type() is never "table". The client
+-- reports "number"/"string"; the mock can't, so guard with issecretvalue,
+-- never with type(). Lua 5.1 never calls __eq between a userdata and a
+-- number, so `secret == 0` is silently false here instead of raising.
+local SecretProto = newproxy(true)
+local SecretMT = getmetatable(SecretProto)
 local function SecretError() error("attempt to use a secret value", 2) end
 for _, ev in ipairs({ "__add", "__sub", "__mul", "__div", "__mod", "__pow", "__unm", "__lt", "__le", "__concat", "__len" }) do
   SecretMT[ev] = SecretError
 end
 SecretMT.__tostring = function() return "<secret value>" end
-local function NewSecret() return setmetatable({}, SecretMT) end
-local function IsSecretValue(v) return type(v) == "table" and getmetatable(v) == SecretMT end
+local function NewSecret() return newproxy(SecretProto) end
+local function IsSecretValue(v) return type(v) == "userdata" and getmetatable(v) == SecretMT end
 M.NewSecret, M.IsSecretValue = NewSecret, IsSecretValue
 
 -- Frames ----------------------------------------------------------------------
 
-local FrameMethods = {}
-FrameMethods.__frame = true
-
-function FrameMethods:SetScript(name, fn) self._scripts[name] = fn end
-function FrameMethods:GetScript(name) return self._scripts[name] end
-function FrameMethods:HookScript(name, fn)
-  local old = self._scripts[name]
-  self._scripts[name] = old and function(...) old(...); fn(...) end or fn
-end
-function FrameMethods:HasScript() return true end
-function FrameMethods:RegisterEvent(ev) self._events[ev] = true end
-function FrameMethods:RegisterUnitEvent(ev) self._events[ev] = true end
-function FrameMethods:UnregisterEvent(ev) self._events[ev] = nil end
-function FrameMethods:UnregisterAllEvents() self._events = {} end
-function FrameMethods:IsEventRegistered(ev) return self._events[ev] == true end
-function FrameMethods:Show()
-  local was = self._shown
-  self._shown = true
-  if not was and self._scripts.OnShow then self._scripts.OnShow(self) end
-end
-function FrameMethods:Hide()
-  local was = self._shown
-  self._shown = false
-  if was and self._scripts.OnHide then self._scripts.OnHide(self) end
-end
-function FrameMethods:SetShown(v) if v then self:Show() else self:Hide() end end
-function FrameMethods:IsShown() return self._shown end
-function FrameMethods:IsVisible() return self._shown end
-function FrameMethods:GetName() return self._name end
-function FrameMethods:GetParent() return self._parent end
-function FrameMethods:SetParent(p) self._parent = p end
-function FrameMethods:GetObjectType() return self._type end
-function FrameMethods:SetText(t) self._text = t end
-function FrameMethods:GetText() return self._text end
-function FrameMethods:SetWidth(w) self._w = w end
-function FrameMethods:SetHeight(h) self._h = h end
-function FrameMethods:SetSize(w, h) self._w, self._h = w, h end
-function FrameMethods:GetWidth() return self._w or 0 end
-function FrameMethods:GetHeight() return self._h or 0 end
-function FrameMethods:GetSize() return self._w or 0, self._h or 0 end
-function FrameMethods:GetStringWidth() return #(self._text or "") * 6 end
-function FrameMethods:GetStringHeight() return 12 end
-function FrameMethods:SetAttribute(k, v) self._attr[k] = v end
-function FrameMethods:GetAttribute(k) return self._attr[k] end
-function FrameMethods:IsEnabled() return self._enabled ~= false end
-function FrameMethods:SetEnabled(v) self._enabled = v and true or false end
-function FrameMethods:Enable() self._enabled = true end
-function FrameMethods:Disable() self._enabled = false end
-function FrameMethods:GetChecked() return self._checked end
-function FrameMethods:SetChecked(v) self._checked = v end
-function FrameMethods:GetNumPoints() return 0 end
--- PortraitFrameTemplate: the portrait texture (a plain no-op widget here).
-function FrameMethods:GetPortrait()
-  if not self._portrait then self._portrait = M.NewFrame(self._world, "Texture", nil, self) end
-  return self._portrait
-end
-
-local function NewFrame(W, ftype, name, parent)
-  local f = { _type = ftype or "Frame", _name = name, _parent = parent, _scripts = {}, _events = {},
-    _attr = {}, _shown = true, _world = W }
-  setmetatable(f, {
-    __index = function(_, k)
-      local m = FrameMethods[k]
-      if m ~= nil then return m end
-      -- Unmocked widget methods (SetPoint, SetFontObject, ...) are no-ops.
-      -- Lowercase keys are the addon's own fields, so they stay nil.
-      if type(k) == "string" and k:match("^%u") then
-        if k:match("^Create") then
-          return function(self) return NewFrame(W, k:sub(7), nil, self) end
-        end
-        return noop
-      end
-      return nil
-    end,
-  })
-  return f
-end
-M.NewFrame = NewFrame
+-- The frame model (anchors, sizes, textures, font strings, templates) lives
+-- in frames.lua; layout.lua resolves it into rectangles.
+local frames = require("frames")
+M.frames = frames
+M.NewFrame = function(W, ftype, name, parent) return frames.NewObject(W, ftype, name, parent) end
 
 -- Calls a frame script, keeping any error in W.errors (the game shows it and
 -- carries on).
@@ -268,10 +204,32 @@ local function HasItem(W, id)
   return false
 end
 
-local function MacroIndexByName(W, name)
-  for i, m in ipairs(W.macros) do if m.name == name then return i end end
-  return 0
+-- Macro indices, as in the client: account macros 1..120 and character
+-- macros 121..138, each tab sorted by name (ties keep creation order).
+local MAX_ACCOUNT, MAX_CHAR = 120, 18
+local function MacroOrder(W)
+  local tabs = { [false] = {}, [true] = {} }
+  for pos, m in ipairs(W.macros) do
+    local t = tabs[m.perChar and true or false]
+    t[#t + 1] = { m = m, pos = pos, key = tostring(m.name):lower() }
+  end
+  local byIndex, indexOf = {}, {}
+  for perChar, list in pairs(tabs) do
+    table.sort(list, function(a, b) if a.key ~= b.key then return a.key < b.key end return a.pos < b.pos end)
+    local base = perChar and MAX_ACCOUNT or 0
+    for k, e in ipairs(list) do byIndex[base + k] = e.m; indexOf[e.m] = base + k end
+  end
+  return byIndex, indexOf
 end
+local function MacroAt(W, i) return type(i) == "number" and (MacroOrder(W))[i] or nil end
+local function MacroIndexOf(W, m) local _, indexOf = MacroOrder(W) return indexOf[m] end
+local function MacroIndexByName(W, name)
+  local byIndex = MacroOrder(W)
+  local best
+  for i, m in pairs(byIndex) do if m.name == name and (not best or i < best) then best = i end end
+  return best or 0
+end
+M.MacroAt, M.MacroIndexOf, M.MacroIndexByName = MacroAt, MacroIndexOf, MacroIndexByName
 
 local function Pet(W) return W.fixture.pet end
 
@@ -355,24 +313,15 @@ function M.api(W, toc)
   }, { __index = function(t, k) local v = AutoStub(W, "Enum." .. k) rawset(t, k, v) return v end })
 
   -- Frames ----------------------------------------------------------------------
-  A.CreateFrame = function(ftype, name, parent)
-    local f = NewFrame(W, ftype, name, parent)
-    W.frames[#W.frames + 1] = f
-    if name then rawset(W.G, name, f) end
-    return f
-  end
-  A.UIParent = NewFrame(W, "Frame", "UIParent")
-  A.GameTooltip = NewFrame(W, "GameTooltip", "GameTooltip")
-  A.RaidWarningFrame = NewFrame(W, "Frame", "RaidWarningFrame")
-  A.LootFrame = NewFrame(W, "Frame", "LootFrame")
-  A.LootFrame._shown = false
+  -- CreateFrame, UIParent, GameTooltip, font objects, C_XMLUtil and
+  -- CLASS_ICON_TCOORDS come from frames.lua.
+  frames.Install(W, A, toc)
   A.GameTooltip_Hide = noop
   A.RaidNotice_AddMessage = noop
   A.PlaySound = noop
 
   -- Addon metadata --------------------------------------------------------------
   local function Metadata(addon, field) if addon == toc.name then return toc.meta[field] end end
-  A.GetAddOnMetadata = Metadata
   A.C_AddOns = Lenient(W, "C_AddOns", { GetAddOnMetadata = Metadata, IsAddOnLoaded = function() return false end })
 
   -- Player ----------------------------------------------------------------------
@@ -417,11 +366,14 @@ function M.api(W, toc)
   A.GetRangedCritChance = function() return S(12.25) end
   A.GetDodgeChance = function() return S(6.1) end
   -- Aura reads raise while secret, so the snapshot has to keep the old list.
+  -- W.secret = "fields" instead returns AuraData whose fields are secret
+  -- (what the 12.x client may do; unconfirmed).
   A.C_UnitAuras = Lenient(W, "C_UnitAuras", {
     GetAuraDataByIndex = function(unit, i)
-      if W.secret then error("aura data is secret") end
+      if W.secret and W.secret ~= "fields" then error("aura data is secret") end
       local list = unit == "player" and (fx.buffs or { "Aspect of the Hawk", "Trueshot Aura" }) or {}
       local name = list[i]
+      if name and W.secret == "fields" then return { name = NewSecret(), auraInstanceID = NewSecret() } end
       if name then return { name = name, auraInstanceID = i } end
     end,
   })
@@ -445,7 +397,6 @@ function M.api(W, toc)
       if SpellByID(W, id) then W.cursor = { type = "spell", id = id } end
     end,
   })
-  A.PickupSpell = A.C_Spell.PickupSpell
   A.GetFlyoutInfo = function(id)
     for _, f in ipairs(fx.flyouts or {}) do
       if f.id == id then return f.name, "", #(f.spells or {}), true end
@@ -500,8 +451,15 @@ function M.api(W, toc)
     local p = Pet(W)
     local a = p and (p.actions or {})[i]
     if not a then return nil end
-    -- name, texture, isToken, isActive, autoCastAllowed, autoCastEnabled
-    return a.name, a.texture or 132140, a.token or false, false, a.autocast or false, false
+    -- name, texture, isToken, isActive, autoCastAllowed, autoCastEnabled.
+    -- For a token entry both name and texture are global names, as in the real
+    -- client: PET_ACTION_ATTACK -> PET_ATTACK_TEXTURE (the addon resolves _G[]).
+    local tex = a.texture
+    if not tex and a.token then
+      local key = a.name:match("^PET_ACTION_(.+)$") or a.name:match("^PET_MODE_(.+)$")
+      tex = key and ("PET_" .. key .. "_TEXTURE")
+    end
+    return a.name, tex or 132140, a.token or false, false, a.autocast or false, false
   end
 
   -- Items and bags --------------------------------------------------------------
@@ -532,8 +490,6 @@ function M.api(W, toc)
     end,
     EquipItemByName = function(id, slot) Record(W, "EquipItemByName", id, slot) end,
   })
-  A.PickupItem = A.C_Item.PickupItem
-  A.EquipItemByName = A.C_Item.EquipItemByName
   A.C_Container = Lenient(W, "C_Container", {
     GetContainerNumSlots = function(bag)
       local b = (fx.bags or {})[bag]
@@ -565,38 +521,70 @@ function M.api(W, toc)
   })
 
   -- Macros ----------------------------------------------------------------------
-  A.GetNumMacros = function()
-    local acct, char = 0, 0
-    for _, m in ipairs(W.macros) do if m.perChar then char = char + 1 else acct = acct + 1 end end
-    return acct, char
+  -- W.macros is storage in no particular order. As in the client, the index
+  -- is the macro's place in its tab sorted by name: account macros are
+  -- 1..120, character macros 121..138 (MacroAt / MacroIndexOf above).
+  local function Count(perChar)
+    local n = 0
+    for _, m in ipairs(W.macros) do if (m.perChar and true or false) == perChar then n = n + 1 end end
+    return n
   end
+  A.GetNumMacros = function() return Count(false), Count(true) end
   A.GetMacroIndexByName = function(name) return MacroIndexByName(W, name) end
-  A.GetMacroInfo = function(i) local m = W.macros[i] if m then return m.name, m.icon, m.body end end
-  A.GetMacroBody = function(i) local m = W.macros[i] return m and m.body end
+  A.GetMacroInfo = function(i) local m = MacroAt(W, i) if m then return m.name, m.icon, m.body end end
+  A.GetMacroBody = function(i) local m = MacroAt(W, i) return m and m.body end
+  -- Macro action slots and the cursor follow their macro when indices
+  -- shift, and are cleared when it is deleted (as the client does).
+  local function Track(change)
+    local held = {}
+    for slot, a in pairs(W.actions) do if a.type == "macro" then held[slot] = MacroAt(W, a.id) or false end end
+    local cur = W.cursor and W.cursor.type == "macro" and MacroAt(W, W.cursor.id)
+    local r = { change() }
+    for slot, m in pairs(held) do
+      local i = m and MacroIndexOf(W, m)
+      if i then W.actions[slot] = { type = "macro", id = i } else W.actions[slot] = nil end
+    end
+    if cur then
+      local i = MacroIndexOf(W, cur)
+      W.cursor = i and { type = "macro", id = i } or nil
+    end
+    return unpack(r)
+  end
   A.CreateMacro = function(name, icon, body, perChar)
     Record(W, "CreateMacro", name, icon, body, perChar)
     if W.inCombat then error("CreateMacro: can't create macros in combat") end
-    W.macros[#W.macros + 1] = { name = name, icon = icon, body = body, perChar = perChar and true or false }
-    return #W.macros
+    perChar = perChar and true or false
+    -- A full tab: the client shows an error and creates nothing.
+    if Count(perChar) >= (perChar and MAX_CHAR or MAX_ACCOUNT) then return nil end
+    return Track(function()
+      local m = { name = name, icon = icon, body = body, perChar = perChar }
+      W.macros[#W.macros + 1] = m
+      return MacroIndexOf(W, m)
+    end)
   end
   A.EditMacro = function(i, name, icon, body)
     Record(W, "EditMacro", i, name, icon, body)
     if W.inCombat then error("EditMacro: can't edit macros in combat") end
-    local m = W.macros[i]
-    if m then m.name, m.icon, m.body = name or m.name, icon or m.icon, body or m.body end
-    return i
+    local m = MacroAt(W, type(i) == "string" and MacroIndexByName(W, i) or i)
+    if not m then return nil end
+    return Track(function()
+      m.name, m.icon, m.body = name or m.name, icon or m.icon, body or m.body
+      return MacroIndexOf(W, m)
+    end)
   end
   A.DeleteMacro = function(i)
     if type(i) == "string" then i = MacroIndexByName(W, i) end
-    Record(W, "DeleteMacro", i, W.macros[i] and W.macros[i].name)
-    -- Guarded: table.remove(t, 0) in Lua 5.1 shifts the whole list down.
-    if W.inCombat or not W.macros[i] then return end
-    table.remove(W.macros, i)
+    local m = MacroAt(W, i)
+    Record(W, "DeleteMacro", i, m and m.name)
+    if W.inCombat or not m then return end
+    Track(function()
+      for k, x in ipairs(W.macros) do if x == m then table.remove(W.macros, k) break end end
+    end)
   end
   A.PickupMacro = function(i)
     if type(i) == "string" then i = MacroIndexByName(W, i) end
     Record(W, "PickupMacro", i)
-    if W.macros[i] then W.cursor = { type = "macro", id = i } end
+    if MacroAt(W, i) then W.cursor = { type = "macro", id = i } end
   end
 
   -- Action slots and cursor -----------------------------------------------------
@@ -607,7 +595,7 @@ function M.api(W, toc)
   A.HasAction = function(slot) return W.actions[slot] ~= nil end
   A.GetActionText = function(slot)
     local a = W.actions[slot]
-    if a and a.type == "macro" then local m = W.macros[a.id] return m and m.name end
+    if a and a.type == "macro" then local m = MacroAt(W, a.id) return m and m.name end
   end
   A.GetActionTexture = function(slot) return W.actions[slot] and 134400 or nil end
   A.PickupAction = function(slot)
@@ -643,7 +631,7 @@ function M.api(W, toc)
   A.SetBindingMacro = function(key, macro)
     Record(W, "SetBindingMacro", key, macro)
     if W.inCombat then return false end
-    if type(macro) == "number" then macro = W.macros[macro] and W.macros[macro].name end
+    if type(macro) == "number" then macro = MacroAt(W, macro) and MacroAt(W, macro).name end
     W.bindings[key] = "MACRO " .. tostring(macro)
     return true
   end
@@ -661,9 +649,15 @@ function M.api(W, toc)
   -- Gamepad UI ------------------------------------------------------------------
   -- NewEnv hides it (nil, not an auto stub) while W.gamepad is false, so a
   -- test can turn the Gamepad UI off in setup(W).
+  -- As on WoW Forever (checked against an in-game snapshot): page-unit slots
+  -- 1-32 are 4 bars x 8 buttons, the Top bar's face buttons (5-8) are
+  -- reserved and have no storage slot, so pages are 28 slots apart.
+  local function Reserved(slotID) return slotID >= 5 and slotID <= 8 end
   A.GamepadActionBarBindingUtil = {
+    IsReservedPageUnitSlotID = Reserved,
     GetGamepadStorageSlotIndexFromPageAndPageUnitSlotID = function(page, slotID)
-      return 180 + (page - 1) * 32 + slotID
+      if Reserved(slotID) then return nil end
+      return 180 + (page - 1) * 28 + (slotID < 5 and slotID or slotID - 4)
     end,
   }
   A.C_GamepadUI = Lenient(W, "C_GamepadUI", { GetFirstGamepadActionStorageSlotIndex = function() return 181 end })
@@ -685,6 +679,16 @@ function M.api(W, toc)
   -- Pet bar tokens (GetPetActionInfo returns these names with isToken).
   A.PET_ACTION_ATTACK, A.PET_ACTION_FOLLOW, A.PET_ACTION_WAIT = "Attack", "Follow", "Stay"
   A.PET_MODE_ASSIST, A.PET_MODE_DEFENSIVE, A.PET_MODE_PASSIVE = "Assist", "Defensive", "Passive"
+  -- Pet bar token textures, as the client defines them in
+  -- Blizzard_ActionBar/Shared/PetActionBar.lua (Gethe/wow-ui-source).
+  A.PET_ATTACK_TEXTURE = "Interface\\Icons\\Ability_GhoulFrenzy"
+  A.PET_FOLLOW_TEXTURE = "Interface\\Icons\\Ability_Tracking"
+  A.PET_WAIT_TEXTURE = "Interface\\Icons\\Spell_Nature_TimeStop"
+  A.PET_ASSIST_TEXTURE = "Interface\\Icons\\Ability_Hunter_Pet_Assist"
+  A.PET_DEFENSIVE_TEXTURE = "Interface\\Icons\\Ability_Defend"
+  A.PET_PASSIVE_TEXTURE = "Interface\\Icons\\Ability_Seal"
+  A.PET_AGGRESSIVE_TEXTURE = "Interface\\Icons\\Ability_Racial_BloodRage"
+  A.PET_MOVE_TO_TEXTURE = "Interface\\Icons\\Ability_Hunter_Pet_Goto"
 
   -- Timers ----------------------------------------------------------------------
   local function Add(seconds, fn, every, iterations)

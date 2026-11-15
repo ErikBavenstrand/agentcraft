@@ -113,26 +113,28 @@ end)
 M.AddSection("questLog", function()
   local out = {}
   if not (C_QuestLog and C_QuestLog.GetNumQuestLogEntries) then return out end
-  local header = "?"
-  for i = 1, C_QuestLog.GetNumQuestLogEntries() do
-    local q = C_QuestLog.GetInfo(i)
-    if q and q.isHeader then
-      header = q.title
-    elseif q and q.questID then
-      local objectives = {}
-      local objs = C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(q.questID)
-      for _, o in ipairs(objs or {}) do
-        objectives[#objectives + 1] = (o.text or "?") .. (o.finished and " (done)" or "")
+  return U.WithHeadersOpen(U.HEADERS.quests, function()
+    local header = "?"
+    for i = 1, C_QuestLog.GetNumQuestLogEntries() do
+      local q = C_QuestLog.GetInfo(i)
+      if q and q.isHeader then
+        header = q.title
+      elseif q and q.questID then
+        local objectives = {}
+        local objs = C_QuestLog.GetQuestObjectives and C_QuestLog.GetQuestObjectives(q.questID)
+        for _, o in ipairs(objs or {}) do
+          objectives[#objectives + 1] = (o.text or "?") .. (o.finished and " (done)" or "")
+        end
+        out[#out + 1] = {
+          questID = q.questID, title = q.title, level = q.level, zone = header,
+          complete = C_QuestLog.IsComplete and C_QuestLog.IsComplete(q.questID) or nil,
+          failed = q.isFailed or nil, suggestedGroup = (q.suggestedGroup or 0) > 0 and q.suggestedGroup or nil,
+          objectives = objectives,
+        }
       end
-      out[#out + 1] = {
-        questID = q.questID, title = q.title, level = q.level, zone = header,
-        complete = C_QuestLog.IsComplete and C_QuestLog.IsComplete(q.questID) or nil,
-        failed = q.isFailed or nil, suggestedGroup = (q.suggestedGroup or 0) > 0 and q.suggestedGroup or nil,
-        objectives = objectives,
-      }
     end
-  end
-  return out
+    return out
+  end)
 end)
 
 -- Every quest this character has turned in (IDs; look names up on Wowhead).
@@ -148,9 +150,13 @@ M.AddSection("combatStats", function()
   local function Put(label, fn, ...) s[label] = Try(fn, ...) end
   Put("Melee crit %", GetCritChance)
   Put("Ranged crit %", GetRangedCritChance)
+  -- Secret values can't be formatted: they read "<secret>" (Join does the same).
   Put("Spell crit % (holy..arcane)", function()
     local t = {}
-    for school = 2, 7 do t[#t + 1] = string.format("%.2f", GetSpellCritChance(school)) end
+    for school = 2, 7 do
+      local v = GetSpellCritChance(school)
+      t[#t + 1] = U.IsSecret(v) and "<secret>" or string.format("%.2f", v)
+    end
     return table.concat(t, " ")
   end)
   Put("Hit bonus %", GetHitModifier)
@@ -168,7 +174,10 @@ M.AddSection("combatStats", function()
   Put("Ranged (speed, min, max, bonusPos, bonusNeg, pct)", UnitRangedDamage, "player")
   Put("Spell bonus damage (holy..arcane)", function()
     local t = {}
-    for school = 2, 7 do t[#t + 1] = tostring(GetSpellBonusDamage(school)) end
+    for school = 2, 7 do
+      local v = GetSpellBonusDamage(school)
+      t[#t + 1] = U.IsSecret(v) and "<secret>" or tostring(v)
+    end
     return table.concat(t, " ")
   end)
   Put("Spell bonus healing", GetSpellBonusHealing)
@@ -200,13 +209,15 @@ end)
 -- Currencies, honor and lifetime PvP stats.
 M.AddSection("currencyPvp", function()
   local out = {}
-  if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyListSize then
-    local list = {}
-    for i = 1, C_CurrencyInfo.GetCurrencyListSize() do
-      local c = C_CurrencyInfo.GetCurrencyListInfo(i)
-      if c and not c.isHeader and c.name then list[#list + 1] = c.name .. ": " .. tostring(c.quantity) end
-    end
-    out.currencies = list
+  if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyListSize and U.HEADERS.currencies then
+    out.currencies = U.WithHeadersOpen(U.HEADERS.currencies, function()
+      local list = {}
+      for i = 1, C_CurrencyInfo.GetCurrencyListSize() do
+        local c = C_CurrencyInfo.GetCurrencyListInfo(i)
+        if c and not c.isHeader and c.name then list[#list + 1] = c.name .. ": " .. U.Join({ n = 1, c.quantity }) end
+      end
+      return list
+    end)
   end
   out.honor = Try(UnitHonor, "player")
   out["lifetime PvP (honorable kills, dishonorable kills, highest rank)"] = Try(GetPVPLifetimeStats)

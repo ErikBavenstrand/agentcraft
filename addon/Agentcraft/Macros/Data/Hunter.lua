@@ -6,6 +6,7 @@
 -- modifier variants (Shift and Ctrl are layers on both devices), and never
 -- /petpassive (it sticks after the fight and your pet stops defending you).
 -- No /petattack either: you send the pet yourself.
+-- Pull, Mark and PetToggle used it and are retired (L.retired in General.lua).
 local _, ns = ...
 local L = ns.MacroLibrary
 
@@ -15,6 +16,8 @@ L.Add({ name = "Arcane", category = "combat", class = "HUNTER", order = 30, perC
   icon = "Arcane Shot", requires = { "Arcane Shot" },
   desc = "Arcane Shot that also starts Auto Shot (never toggles it off).",
   body = "#showtooltip Arcane Shot\n/cast !Auto Shot\n/cast [@target,harm,nodead] Arcane Shot" })
+-- 0.25 text: it also sent the pet in, which the library no longer does.
+L.previous.Arcane = { "#showtooltip Arcane Shot\n/petattack [@target,harm,nodead]\n/cast !Auto Shot\n/cast [@target,harm,nodead] Arcane Shot" }
 
 L.Add({ name = "FDTrap", category = "combat", class = "HUNTER", order = 61, perCharacter = true,
   icon = "Feign Death", requires = { "Feign Death", "Freezing Trap" }, tags = { "crowd control", "defensive" },
@@ -30,6 +33,7 @@ L.Add({ name = "Melee", category = "combat", class = "HUNTER", order = 40, perCh
   icon = "Raptor Strike", requires = { "Raptor Strike" }, untested = true,
   desc = "Starts melee and uses whichever is ready: Counterattack (after a parry), Mongoose Bite (after a dodge), else Raptor Strike. Spells you don't know are skipped.",
   body = "#showtooltip Raptor Strike\n/startattack\n/cast Counterattack\n/cast Mongoose Bite\n/cast Raptor Strike" })
+L.previous.Melee = { "#showtooltip Raptor Strike\n/cast Mongoose Bite\n/cast Raptor Strike" }
 
 L.Add({ name = "Burst", category = "combat", class = "HUNTER", order = 50, perCharacter = true, tags = { "cooldown", "controller" },
   icon = "Rapid Fire", requires = { "Rapid Fire" }, untested = true,
@@ -45,54 +49,66 @@ L.Add({ name = "FD", category = "combat", class = "HUNTER", order = 60, perChara
 
 L.Add({ name = "PetCare", category = "pet", class = "HUNTER", order = 5, perCharacter = true, tags = { "controller" },
   icon = "Mend Pet", requires = { "Mend Pet" }, untested = true,
-  desc = "Revives your pet if it's dead, calls it if it's missing, otherwise heals it with Mend Pet.",
-  body = "#showtooltip\n/cast [@pet,dead] Revive Pet; [nopet] Call Pet; Mend Pet" })
+  desc = "Calls your pet if it's missing, revives it if it's dead (even after its body is gone), otherwise heals it with Mend Pet.",
+  body = "#showtooltip\n/cast [nopet] Call Pet\n/cast [@pet,dead][nopet] Revive Pet; Mend Pet" })
+-- How it works: a dead pet's unit is gone once its body despawns (zoning,
+-- flying, relogging), so [@pet,dead] is false and [nopet] is true. Line 1
+-- then tries Call Pet, which fails at once with "Your pet is dead" (no
+-- global cooldown), and line 2 casts Revive Pet. With a pet that is only
+-- dismissed, Call Pet works and its global cooldown stops line 2. A dead
+-- pet that is still there skips line 1 and gets Revive Pet. Older texts:
+-- the [mod:shift] one (no modifier variants now), then 0.26, which cast
+-- Call Pet on a despawned dead pet and never reached Revive Pet.
+L.previous.PetCare = {
+  "#showtooltip\n/cast [mod:shift][@pet,dead] Revive Pet; [nopet] Call Pet; Mend Pet",
+  "#showtooltip\n/cast [@pet,dead] Revive Pet; [nopet] Call Pet; Mend Pet",
+}
 
 -- Autocast toggles, one per pet ability that can autocast (Classic hunter
 -- pets). The controller's { petauto = true } buttons use the one for each of
 -- your pet's abilities, but only once you've installed it here; Apply never
 -- creates them. On a keyboard, right-click the pet bar instead.
 -- petAbility = the pet spell the macro toggles (Controller matches on it).
-L.Add({ name = "Auto Growl", category = "pet", class = "HUNTER", order = 101, perCharacter = true, icon = "Growl",
+L.Add({ name = "Auto Growl", category = "pet", class = "HUNTER", order = 101, perCharacter = true, icon = "Growl", iconFile = "Ability_Physical_Taunt",
   petAbility = "Growl", tags = { "controller", "autocast" }, desc = "Turns autocast of your pet's Growl on or off.",
   body = "#showtooltip Growl\n/petautocasttoggle Growl" })
-L.Add({ name = "Auto Claw", category = "pet", class = "HUNTER", order = 102, perCharacter = true, icon = "Claw",
+L.Add({ name = "Auto Claw", category = "pet", class = "HUNTER", order = 102, perCharacter = true, icon = "Claw", iconFile = "Ability_Druid_Rake",
   petAbility = "Claw", tags = { "controller", "autocast" }, desc = "Turns autocast of your pet's Claw on or off.",
   body = "#showtooltip Claw\n/petautocasttoggle Claw" })
-L.Add({ name = "Auto Bite", category = "pet", class = "HUNTER", order = 103, perCharacter = true, icon = "Bite",
+L.Add({ name = "Auto Bite", category = "pet", class = "HUNTER", order = 103, perCharacter = true, icon = "Bite", iconFile = "Ability_Racial_Cannibalize",
   petAbility = "Bite", tags = { "controller", "autocast" }, desc = "Turns autocast of your pet's Bite on or off.",
   body = "#showtooltip Bite\n/petautocasttoggle Bite" })
-L.Add({ name = "Auto Dash", category = "pet", class = "HUNTER", order = 104, perCharacter = true, icon = "Dash",
+L.Add({ name = "Auto Dash", category = "pet", class = "HUNTER", order = 104, perCharacter = true, icon = "Dash", iconFile = "Ability_Druid_Dash",
   petAbility = "Dash", tags = { "controller", "autocast" }, desc = "Turns autocast of your pet's Dash on or off.",
   body = "#showtooltip Dash\n/petautocasttoggle Dash" })
-L.Add({ name = "Auto Dive", category = "pet", class = "HUNTER", order = 105, perCharacter = true, icon = "Dive",
+L.Add({ name = "Auto Dive", category = "pet", class = "HUNTER", order = 105, perCharacter = true, icon = "Dive", iconFile = "Spell_Shadow_BurningSpirit",
   petAbility = "Dive", tags = { "controller", "autocast" }, desc = "Turns autocast of your pet's Dive on or off.",
   body = "#showtooltip Dive\n/petautocasttoggle Dive" })
-L.Add({ name = "Auto Charge", category = "pet", class = "HUNTER", order = 106, perCharacter = true, icon = "Charge",
+L.Add({ name = "Auto Charge", category = "pet", class = "HUNTER", order = 106, perCharacter = true, icon = "Charge", iconFile = "Ability_Hunter_Pet_Boar",
   petAbility = "Charge", tags = { "controller", "autocast" }, desc = "Turns autocast of your pet's Charge on or off.",
   body = "#showtooltip Charge\n/petautocasttoggle Charge" })
-L.Add({ name = "Auto Prowl", category = "pet", class = "HUNTER", order = 107, perCharacter = true, icon = "Prowl",
+L.Add({ name = "Auto Prowl", category = "pet", class = "HUNTER", order = 107, perCharacter = true, icon = "Prowl", iconFile = "Ability_Ambush",
   petAbility = "Prowl", tags = { "controller", "autocast" }, desc = "Turns autocast of your pet's Prowl on or off.",
   body = "#showtooltip Prowl\n/petautocasttoggle Prowl" })
-L.Add({ name = "Auto Cower", category = "pet", class = "HUNTER", order = 108, perCharacter = true, icon = "Cower",
+L.Add({ name = "Auto Cower", category = "pet", class = "HUNTER", order = 108, perCharacter = true, icon = "Cower", iconFile = "Ability_Druid_Cower",
   petAbility = "Cower", tags = { "controller", "autocast" }, desc = "Turns autocast of your pet's Cower on or off.",
   body = "#showtooltip Cower\n/petautocasttoggle Cower" })
-L.Add({ name = "Auto Screech", category = "pet", class = "HUNTER", order = 109, perCharacter = true, icon = "Screech",
+L.Add({ name = "Auto Screech", category = "pet", class = "HUNTER", order = 109, perCharacter = true, icon = "Screech", iconFile = "Ability_Hunter_Pet_Bat",
   petAbility = "Screech", tags = { "controller", "autocast" }, desc = "Turns autocast of your pet's Screech on or off.",
   body = "#showtooltip Screech\n/petautocasttoggle Screech" })
-L.Add({ name = "Auto Howl", category = "pet", class = "HUNTER", order = 110, perCharacter = true, icon = "Furious Howl",
+L.Add({ name = "Auto Howl", category = "pet", class = "HUNTER", order = 110, perCharacter = true, icon = "Furious Howl", iconFile = "Ability_Hunter_Pet_Wolf",
   petAbility = "Furious Howl", tags = { "controller", "autocast" }, desc = "Turns autocast of your pet's Furious Howl on or off.",
   body = "#showtooltip Furious Howl\n/petautocasttoggle Furious Howl" })
-L.Add({ name = "Auto Lightning", category = "pet", class = "HUNTER", order = 111, perCharacter = true, icon = "Lightning Breath",
+L.Add({ name = "Auto Lightning", category = "pet", class = "HUNTER", order = 111, perCharacter = true, icon = "Lightning Breath", iconFile = "Spell_Nature_Lightning",
   petAbility = "Lightning Breath", tags = { "controller", "autocast" }, desc = "Turns autocast of your pet's Lightning Breath on or off.",
   body = "#showtooltip Lightning Breath\n/petautocasttoggle Lightning Breath" })
-L.Add({ name = "Auto Poison", category = "pet", class = "HUNTER", order = 112, perCharacter = true, icon = "Scorpid Poison",
+L.Add({ name = "Auto Poison", category = "pet", class = "HUNTER", order = 112, perCharacter = true, icon = "Scorpid Poison", iconFile = "Ability_PoisonSting",
   petAbility = "Scorpid Poison", tags = { "controller", "autocast" }, desc = "Turns autocast of your pet's Scorpid Poison on or off.",
   body = "#showtooltip Scorpid Poison\n/petautocasttoggle Scorpid Poison" })
-L.Add({ name = "Auto Thunder", category = "pet", class = "HUNTER", order = 113, perCharacter = true, icon = "Thunderstomp",
+L.Add({ name = "Auto Thunder", category = "pet", class = "HUNTER", order = 113, perCharacter = true, icon = "Thunderstomp", iconFile = "Ability_Hunter_Pet_Gorilla",
   petAbility = "Thunderstomp", tags = { "controller", "autocast" }, desc = "Turns autocast of your pet's Thunderstomp on or off.",
   body = "#showtooltip Thunderstomp\n/petautocasttoggle Thunderstomp" })
-L.Add({ name = "Auto Shell", category = "pet", class = "HUNTER", order = 114, perCharacter = true, icon = "Shell Shield",
+L.Add({ name = "Auto Shell", category = "pet", class = "HUNTER", order = 114, perCharacter = true, icon = "Shell Shield", iconFile = "Ability_Hunter_Pet_Turtle",
   petAbility = "Shell Shield", tags = { "controller", "autocast" }, desc = "Turns autocast of your pet's Shell Shield on or off.",
   body = "#showtooltip Shell Shield\n/petautocasttoggle Shell Shield" })
 

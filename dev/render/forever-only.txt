@@ -1,0 +1,39 @@
+# WoW Forever (Camelot) atlases that the retail UiTextureAtlasMember table lacks.
+# render.lua reports a missing PNG for one of these as an info line, not a
+# warning. Each line: <atlas>\t<Forever UI source file that uses it>. The addon
+# always names a retail atlas of the same role after these (UI.ART in
+# addon/Agentcraft/UI/Widgets.lua), and the harness knows only retail names,
+# so renders normally draw the retail fallback instead.
+UI-Character-Info-Stat-BG	Blizzard_UIPanels_Game/Camelot/CharacterFrame.xml
+UI-Character-Info-Stat-StoneBG3	Blizzard_UIPanels_Game/Camelot/CharacterFrame.xml
+UI-Character-Info-General-BG	Blizzard_UIPanels_Game/Camelot/CharacterFrame.xml
+UI-Character-Info-Line-Bounce2	Blizzard_UIPanels_Game/Camelot/CharacterFrame.xml
+UI-Character-Info-ScrollLine	Blizzard_UIPanels_Game/Camelot/CharacterFrame.xml
+UI-Character-Info-GearSlot	Blizzard_UIPanels_Game/Camelot/PaperDollFrame.xml
+UI-Character-Info-OutfitCard	Blizzard_UIPanels_Game/Camelot/PaperDollFrame.xml
+UI-Character-Info-OutfitCard-Hover	Blizzard_UIPanels_Game/Camelot/PaperDollFrame.xml
+UI-Character-Info-OutfitCard-Selected	Blizzard_UIPanels_Game/Camelot/PaperDollFrame.xml
+UI-Character-Info-OutfitIcon-Frame	Blizzard_UIPanels_Game/Camelot/PaperDollFrame.xml
+UI-Character-Info-Icon-Tick	Blizzard_UIPanels_Game/Camelot/PaperDollFrame.xml
+common-framedivider	Blizzard_UIPanels_Game/Camelot/CharacterFrame.xml
+gamepad-actionbar-circleslot-dropshadow	Blizzard_GamepadActionBars/ActionBarButton.xml
+gamepad-actionbar-squareslot-dropshadow	Blizzard_GamepadActionBars/ActionBarButton.xml
+gamepad-actionbar-focus-bg-circ	Blizzard_GamepadActionBars/ActionBarButton.xml
+gamepad-actionbar-focus-bg-square	Blizzard_GamepadActionBars/ActionBarButton.xml
+gamepad-actionbar-fx-circglw	Blizzard_GamepadActionBars/ActionBarButton.xml
+gamepad-actionbar-fx-squareglw	Blizzard_GamepadActionBars/ActionBarButton.xml
+gamepad-xbox1-buttona-normal	Blizzard_SharedXML/Shared/InputIcons/InputIconTexture.lua
+gamepad-xbox1-buttonb-normal	Blizzard_SharedXML/Shared/InputIcons/InputIconTexture.lua
+gamepad-xbox1-buttonx-normal	Blizzard_SharedXML/Shared/InputIcons/InputIconTexture.lua
+gamepad-xbox1-buttony-normal	Blizzard_SharedXML/Shared/InputIcons/InputIconTexture.lua
+gamepad-xbox1-trigger-lb-normal	Blizzard_SharedXML/Shared/InputIcons/InputIconTexture.lua
+gamepad-xbox1-trigger-rb-normal	Blizzard_SharedXML/Shared/InputIcons/InputIconTexture.lua
+gamepad-xbox1-trigger-lt-normal	Blizzard_SharedXML/Shared/InputIcons/InputIconTexture.lua
+gamepad-xbox1-trigger-rt-normal	Blizzard_SharedXML/Shared/InputIcons/InputIconTexture.lua
+gamepad-xbox1-dpadup-normal	Blizzard_SharedXML/Shared/InputIcons/InputIconTexture.lua
+gamepad-ps-buttoncrox-normal	Blizzard_SharedXML/Shared/InputIcons/InputIconTexture.lua
+gamepad-ps-buttoncircle-normal	Blizzard_SharedXML/Shared/InputIcons/InputIconTexture.lua
+gamepad-ps-buttonsquare-normal	Blizzard_SharedXML/Shared/InputIcons/InputIconTexture.lua
+gamepad-ps-buttontriangle-normal	Blizzard_SharedXML/Shared/InputIcons/InputIconTexture.lua
+spellbook-Page-Left-C60	Blizzard_PlayerSpells/Camelot/SpellBook/Blizzard_SpellBookTemplates.xml
+spellbook-Page-Right-C60	Blizzard_PlayerSpells/Camelot/SpellBook/Blizzard_SpellBookTemplates.xml

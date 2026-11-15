@@ -22,6 +22,18 @@ local function Current(name)
   return snap and snap[name]
 end
 
+-- Runs fn once, `delay` seconds after the first of a burst of calls with the
+-- same key (opening a window fires several events at once).
+local queued = {}
+local function Soon(key, delay, fn)
+  if queued[key] then return end
+  queued[key] = true
+  C_Timer.After(delay, function()
+    queued[key] = nil
+    fn()
+  end)
+end
+
 -- Items in one container: { "Name xN", ... }.
 local function ContainerItems(bag)
   local n = C_Container.GetContainerNumSlots(bag) or 0
@@ -44,7 +56,7 @@ end
 
 local bankOpen = false
 
-local function ScanBank()
+local function ScanBank(closing)
   if not bankOpen then return end
   local out = { containers = {} }
   -- Bank container IDs differ between game versions, so try every known one.
@@ -55,29 +67,41 @@ local function ScanBank()
     end
   end
   for id = (NUM_BAG_SLOTS or 4) + 1, (NUM_BAG_SLOTS or 4) + (NUM_BANKBAGSLOTS or 7) do ids[#ids + 1] = id end
-  local seen = {}
+  local seen, readable = {}, false
   for _, id in ipairs(ids) do
     if not seen[id] then
       seen[id] = true
       local ok, c = pcall(ContainerItems, id)
+      if ok and c then readable = true end
       if ok and c and #c.items > 0 then out.containers["container " .. id] = c end
     end
   end
-  M.SetCached("bank", out)
+  -- Keep the last scan when no bank container has slots (the bank is gone), or
+  -- when a read while closing finds nothing (the bank may already be cleared).
+  if readable and not (closing and next(out.containers) == nil) then M.SetCached("bank", out) end
 end
 
 local function BankShown(interaction)
   local banker = Enum and Enum.PlayerInteractionType and Enum.PlayerInteractionType.Banker
   if interaction == nil or interaction == banker then
     bankOpen = true
-    C_Timer.After(0.5, ScanBank)
+    Soon("bank", 0.5, ScanBank)
   end
 end
 
 M.On("BANKFRAME_OPENED", function() BankShown(nil) end)
 M.On("PLAYER_INTERACTION_MANAGER_FRAME_SHOW", function(_, t) BankShown(t) end)
-M.On("BANKFRAME_CLOSED", function() bankOpen = false end)
-M.On("PLAYERBANKSLOTS_CHANGED", function() C_Timer.After(0.5, ScanBank) end)
+M.On("BANKFRAME_CLOSED", function()
+  -- Items moved in the last half second: read them before the bank closes.
+  if queued.bank then ScanBank(true) end
+  bankOpen = false
+end)
+-- Main bank slots, reagent bank, and (on newer engines) bank tabs, plus bank
+-- bags: any change while the bank is open rescans it, once per burst.
+for _, ev in ipairs({ "PLAYERBANKSLOTS_CHANGED", "PLAYERREAGENTBANKSLOTS_CHANGED", "BAG_UPDATE_DELAYED",
+  "BANK_TABS_CHANGED", "BANK_TAB_SETTINGS_UPDATED" }) do
+  M.On(ev, function() if bankOpen then Soon("bank", 0.5, ScanBank) end end)
+end
 
 -- Mail -------------------------------------------------------------------------
 
@@ -102,7 +126,7 @@ local function ScanMail()
   M.SetCached("mail", { count = #list, messages = list })
 end
 
-M.On("MAIL_INBOX_UPDATE", function() C_Timer.After(0.3, ScanMail) end)
+M.On("MAIL_INBOX_UPDATE", function() Soon("mail", 0.3, ScanMail) end)
 
 -- Recipes ----------------------------------------------------------------------
 
@@ -173,11 +197,13 @@ local function ScanRecipes(kind)
   M.SetCached("recipes", all)
 end
 
+-- One scan per burst of events (they fire together on open, and again after
+-- every craft and bag change while the window is open).
 for _, ev in ipairs({ "TRADE_SKILL_SHOW", "TRADE_SKILL_LIST_UPDATE", "TRADE_SKILL_DATA_SOURCE_CHANGED", "TRADE_SKILL_UPDATE" }) do
-  M.On(ev, function() C_Timer.After(0.5, function() ScanRecipes("trade") end) end)
+  M.On(ev, function() Soon("trade", 0.5, function() ScanRecipes("trade") end) end)
 end
 for _, ev in ipairs({ "CRAFT_SHOW", "CRAFT_UPDATE" }) do
-  M.On(ev, function() C_Timer.After(0.5, function() ScanRecipes("craft") end) end)
+  M.On(ev, function() Soon("craft", 0.5, function() ScanRecipes("craft") end) end)
 end
 
 -- Flight paths -----------------------------------------------------------------

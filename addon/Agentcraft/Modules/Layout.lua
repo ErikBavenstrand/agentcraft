@@ -17,6 +17,9 @@
 --   * Homes for spells you haven't learned stay empty until you do.
 -- Entry forms (resolved in Controller.lua):
 --   { "Spell", "Alternative" }        first one you know
+--   { "Better", "Lower", upgrade = true }  a same-role upgrade: once you know the
+--                                     better one, the lower one needs no home
+--                                     (side bars and the controller catch-all skip it)
 --   { macro = "Arcane", "Arcane Shot" } the macro if you installed it, else the spell
 --   { macro = "FD", "Feign Death", "Disengage" } before you know Feign Death, Disengage
 --   { flyout = 253, "Aspect of the Hawk" } a spellbook flyout (radial on a controller)
@@ -54,7 +57,7 @@ L.keyboard = {
       { macro = "Opener", "Hunter's Mark" },        -- 1  opener (target, Mark, Auto Shot; pet stays)
       { "Multi-Shot" },                             -- 2
       { "Concussive Shot" },                        -- 3
-      { "Explosive Trap", "Immolation Trap" },      -- 4  damage trap
+      { "Explosive Trap", "Immolation Trap", upgrade = true }, -- 4  damage trap
     },
     -- Bar 2 (Shift): Q E R T cooldowns and pet, F G C V crowd control and
     -- escape, 1 2 3 4 aspects. Situational spells go to the side bars.
@@ -97,7 +100,7 @@ L.controller = {
         ["RT Up"] = { macro = "Opener", "Hunter's Mark" },
         ["RT Right"] = { "Aimed Shot" },
         ["RT Left"] = { "Summon Hawk", "Sniper Shot" },
-        ["RT Down"] = { "Explosive Trap", "Immolation Trap" },
+        ["RT Down"] = { "Explosive Trap", "Immolation Trap", upgrade = true },
         ["LT A"] = { macro = "Melee", "Raptor Strike" },
         ["LT X"] = { "Mongoose Bite" },
         ["LT B"] = { "Wing Clip" },
@@ -155,7 +158,7 @@ L.controller = {
       },
       -- Page 3: pet autocast, Steam Deck helpers and the catch-all.
       {
-        title = "Pet & Deck",
+        title = "Pet & Extras",
         -- RT: every ability your pet knows that can autocast, one on/off
         -- toggle each, in pet bar order (spinning border = autocast on).
         ["RT A"] = { petauto = true }, ["RT X"] = { petauto = true },

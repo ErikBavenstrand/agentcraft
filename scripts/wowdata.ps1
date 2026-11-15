@@ -11,6 +11,11 @@
     log [-File] [-Tail] [-Grep]       a file in Logs (default: newest combat log)
     file -Path <rel> [-Tail] [-Grep]  any text file under the game folder
     install [-Link]                   copy the bundled Agentcraft addon into AddOns
+    capture [-Grep] [-Json] [-Out]    the last /ac capture run: each step with its screenshot and layout
+                                      findings (offscreen, outside the window, zero size, truncated text,
+                                      overlapping siblings, missing textures, texcoord on atlas, flicker).
+                                      -Grep filters steps by name. -Json also writes every step, row and
+                                      finding to -Out (default: a file in %TEMP%) for agents.
   Global options: -Flavor _forever_|_retail_|... (default: _forever_ first), -Account <part of name>,
   -WowPath <folder> (or WOW_PATH), -Max <chars>.
   -Path walks into the data with "/" between keys, e.g. -Path talents or -Path pet/spellbook.
@@ -32,7 +37,9 @@ param(
   [string]$WowPath,
   [string]$Flavor,
   [string]$Account,
-  [switch]$Link
+  [switch]$Link,
+  [switch]$Json,
+  [string]$Out
 )
 
 $ErrorActionPreference = 'Stop'
@@ -571,6 +578,327 @@ function Cmd-Install {
   Out-Text "Installed Agentcraft to $target. In game: /reload (or restart), then /ac opens the window."
 }
 
+# ---------------------------------------------------------------------------
+# /ac capture runs: AgentcraftDB.capture, written by the addon's UI/Capture.lua.
+# Each step holds rows of tab-separated fields (names in capture.fields); a
+# row's path and anchor targets are "#n", an index into capture.paths.
+# Rects are in each object's own scale; findings convert them to UIParent units.
+
+function ConvertTo-Num([string]$s) {
+  if (-not $s) { return $null }
+  $v = 0.0
+  if ([double]::TryParse($s, [Globalization.NumberStyles]::Float, [Globalization.CultureInfo]::InvariantCulture, [ref]$v)) { return $v }
+  return $null
+}
+
+function Get-ShotFiles {
+  $dir = Join-Path $Game 'Screenshots'
+  $list = New-Object System.Collections.Generic.List[object]
+  if (-not (Test-Path -LiteralPath $dir)) { return , $list }
+  foreach ($f in Get-ChildItem -LiteralPath $dir -File -Filter 'WoWScrnShot_*') {
+    if ($f.Name -match '^WoWScrnShot_(\d{6}_\d{6})') {
+      $t = [datetime]::MinValue
+      if ([datetime]::TryParseExact($Matches[1], 'MMddyy_HHmmss', [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::None, [ref]$t)) {
+        $list.Add([pscustomobject]@{ Path = $f.FullName; Time = $t; Used = $false })
+      }
+    }
+  }
+  return , $list
+}
+
+# Pairs each step with a screenshot: step index -> file. Exact seconds are
+# matched first, then 1 s off, then 2 s off, so a missing file never shifts
+# the pairs after it. Steps are at least 1.1 s apart, so pairs stay unique.
+function Find-Shots($files, $steps) {
+  $map = @{}
+  $times = @{}
+  foreach ($st in $steps) {
+    if (-not $st -or -not $st['shot']) { continue }
+    $t = [datetime]::MinValue
+    if ([datetime]::TryParseExact([string]$st['shot']['time'], 'MMddyy_HHmmss', [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::None, [ref]$t)) {
+      $times[[string]$st['index']] = $t
+    }
+  }
+  foreach ($tol in 0, 1, 2) {
+    foreach ($key in @($times.Keys | Sort-Object { [int]$_ })) {
+      if ($map.ContainsKey($key)) { continue }
+      $best = $null; $bestD = 99.0
+      foreach ($f in $files) {
+        if ($f.Used) { continue }
+        $d = [Math]::Abs(($f.Time - $times[$key]).TotalSeconds)
+        if ($d -le $tol -and $d -lt $bestD) { $best = $f; $bestD = $d }
+      }
+      if ($best) { $best.Used = $true; $map[$key] = $best }
+    }
+  }
+  return $map
+}
+
+# The capture table without parsing the whole file: the LuaParser class needs
+# minutes for the megabytes of rows, so each "rows" and the "paths" list are
+# cut out and read with one regex, and only the rest goes through the parser.
+# The game writes nested tables one line per entry, indented with tabs, so a
+# table opened on a line indented n tabs closes on the next line of n tabs + "}".
+# Index of the "}" that closes the "{" at $open, skipping quoted strings. The
+# game writes SavedVariables without indentation, so braces are counted.
+$script:BraceRe = [regex]'"(?:[^"\\]|\\.)*"|[{}]'
+function Find-Close([string]$text, [int]$open) {
+  $depth = 0
+  $m = $script:BraceRe.Match($text, $open)
+  while ($m.Success) {
+    $c = $m.Value[0]
+    if ($c -eq '{') { $depth++ }
+    elseif ($c -eq '}') { $depth--; if ($depth -eq 0) { return $m.Index } }
+    $m = $m.NextMatch()
+  }
+  return -1
+}
+
+function Get-CaptureRun {
+  $acct = Get-AccountDirOrThrow
+  $f = Join-Path $acct.FullName 'SavedVariables\Agentcraft.lua'
+  if (-not (Test-Path -LiteralPath $f)) { throw 'No Agentcraft SavedVariables yet. In game: /ac capture, then let it reload.' }
+  $text = [IO.File]::ReadAllText($f, [Text.Encoding]::UTF8)
+  $m = [regex]::Match($text, '(?m)^[ \t]*\["capture"\] = \{')
+  if (-not $m.Success) { throw "No capture in $f. In game: /ac capture (it reloads the UI at the end; else type /reload)." }
+  $close = Find-Close $text ($m.Index + $m.Length - 1)
+  if ($close -lt 0) { throw "The capture table in $f is cut off." }
+  $block = $text.Substring($m.Index + $m.Length - 1, $close + 1 - ($m.Index + $m.Length - 1))
+  $lists = New-Object System.Collections.Generic.List[object]
+  $strRe = [regex]'"((?:[^"\\]|\\.)*)"'
+  $nul = [string][char]0
+  $digits = [regex]'\\\d'
+  $bs = [char]92
+  $sb = New-Object System.Text.StringBuilder
+  $pos = 0
+  foreach ($open in [regex]::Matches($block, '(?m)^([ \t]*)\["(rows|paths)"\] = \{')) {
+    if ($open.Index -lt $pos) { continue }
+    $end = Find-Close $block ($open.Index + $open.Length - 1)
+    if ($end -lt 0) { throw 'A rows list in the capture is cut off.' }
+    $end = $end - 1 - $open.Groups[1].Value.Length  # so the cut below lands just past the "}"
+    $items = New-Object System.Collections.Generic.List[string]
+    $body = $block.Substring($open.Index + $open.Length, $end - $open.Index - $open.Length)
+    # Inline and ordinal (IndexOf of a [char]): a function call or a
+    # culture-aware IndexOf per string costs more than the rest of the read.
+    foreach ($sm in $strRe.Matches($body)) {
+      $v = $sm.Groups[1].Value
+      if ($v.IndexOf($bs) -ge 0) {
+        # The row separator, a tab, may be written as \t, \9 or \009.
+        $w = $v.Replace('\\', $nul).Replace('\009', "`t").Replace('\9', "`t").Replace('\t', "`t")
+        if ($digits.IsMatch($w)) { $v = ([LuaParser]::new('"' + $v + '"')).Str() }
+        else { $v = $w.Replace('\n', "`n").Replace('\r', "`r").Replace('\"', '"').Replace("\'", "'").Replace($nul, '\') }
+      }
+      $items.Add($v)
+    }
+    [void]$sb.Append($block, $pos, $open.Index - $pos)
+    [void]$sb.Append($open.Groups[1].Value + '["' + $open.Groups[2].Value + '"] = "@LIST' + $lists.Count + '@"')
+    $lists.Add($items.ToArray())
+    $pos = $end + 1 + $open.Groups[1].Value.Length + 1
+  }
+  [void]$sb.Append($block, $pos, $block.Length - $pos)
+  $cap = ([LuaParser]::new('capture = ' + $sb.ToString())).Document()['capture']
+  $fill = {
+    param($node)
+    if ($node -is [System.Collections.IDictionary]) {
+      foreach ($k in @($node.Keys)) {
+        $v = $node[$k]
+        if ($v -is [string] -and $v -match '^@LIST(\d+)@$') { $node[$k] = $lists[[int]$Matches[1]] }
+        elseif ($v -is [System.Collections.IDictionary] -or $v -is [array]) { & $fill $v }
+      }
+    } elseif ($node -is [array]) {
+      foreach ($v in $node) { if ($v -is [System.Collections.IDictionary] -or $v -is [array]) { & $fill $v } }
+    }
+  }
+  & $fill $cap
+  return $cap
+}
+
+# A Lua list as a PowerShell array: an empty table parses as an empty dictionary.
+function As-List($v) {
+  if ($null -eq $v) { return , @() }
+  if ($v -is [array]) { return , $v }
+  if ($v -is [System.Collections.IDictionary] -and $v.Count -eq 0) { return , @() }
+  return , @($v)
+}
+
+function Cmd-Capture {
+  $cap = Get-CaptureRun
+  $fields = As-List $cap['fields']
+  $paths = As-List $cap['paths']
+  $ix = @{}
+  for ($i = 0; $i -lt $fields.Count; $i++) { $ix[[string]$fields[$i]] = $i }
+  foreach ($need in 'path', 'type', 'vis', 'alpha', 'l', 'b', 'w', 'h', 'scale', 'tex', 'atlas', 'atlasTc', 'text', 'trunc') {
+    if (-not $ix.ContainsKey($need)) { throw "capture.fields lacks '$need'; the addon and this script are out of step." }
+  }
+  $iPath = $ix['path']; $iType = $ix['type']; $iVis = $ix['vis']; $iAlpha = $ix['alpha']
+  $iL = $ix['l']; $iB = $ix['b']; $iW = $ix['w']; $iH = $ix['h']; $iScale = $ix['scale']
+  $iTex = $ix['tex']; $iAtlas = $ix['atlas']; $iAtc = $ix['atlasTc']; $iText = $ix['text']; $iTrunc = $ix['trunc']
+  $iClip = if ($ix.ContainsKey('clip')) { $ix['clip'] } else { 9999 }
+  $ui = $cap['ui']
+  $uiW = ConvertTo-Num ([string]$ui['w']); $uiH = ConvertTo-Num ([string]$ui['h']); $uiS = ConvertTo-Num ([string]$ui['scale'])
+  if (-not $uiS) { $uiS = 1.0 }
+  $files = Get-ShotFiles
+  $kinds = 'offscreen', 'outside', 'zero', 'truncated', 'overlap', 'noTexture', 'atlasTc', 'flicker'
+  $across = @{}
+  foreach ($k in $kinds) { $across[$k] = New-Object 'System.Collections.Generic.Dictionary[string,int]' }
+  $report = New-Object System.Collections.Generic.List[string]
+  $jsonSteps = New-Object System.Collections.Generic.List[object]
+  $b = $cap['build']; $sc = $cap['screen']
+  $report.Add("# capture $($cap['runId']) ($($cap['suite'])), Agentcraft $($cap['version']), client $($b['version']) build $($b['build'])")
+  $report.Add("# started $($cap['started']), finished $($cap['finished'])$(if ($cap['stopped']) { ", STOPPED: $($cap['stopped'])" })")
+  $report.Add("# screen $($sc['w'])x$($sc['h']), UIParent $([Math]::Round($uiW))x$([Math]::Round($uiH)) at scale $uiS; coordinates below are UIParent units, origin bottom left")
+  foreach ($e in (As-List $cap['errors'])) { if ($e) { $report.Add("# error: $e") } }
+  $report.Add('# per step: counts, then only findings that are new since the previous step (all flicker hits)')
+  $prev = @{}
+  foreach ($k in $kinds) { $prev[$k] = New-Object 'System.Collections.Generic.HashSet[string]' }
+
+  $steps = As-List $cap['steps']
+  $shots = Find-Shots $files $steps
+  foreach ($st in $steps) {
+    if (-not $st) { continue }
+    $name = [string]$st['name']
+    $shot = $st['shot']
+    $file = $shots[[string]$st['index']]
+    if ($Grep -and $name -notmatch $Grep) { continue }
+    $issues = [ordered]@{}
+    foreach ($k in $kinds) { $issues[$k] = New-Object System.Collections.Generic.List[string] }
+    # Window rect in UIParent units.
+    $wr = As-List $st['window']; $ws = ConvertTo-Num ([string]$st['windowScale']); if (-not $ws) { $ws = 1.0 }
+    $wl = $null
+    if ($wr.Count -ge 4) { $k = $ws / $uiS; $wl = $wr[0] * $k; $wb = $wr[1] * $k; $wrr = ($wr[0] + $wr[2]) * $k; $wt = ($wr[1] + $wr[3]) * $k }
+    $rows = As-List $st['rows'] 
+    $visible = 0
+    $groups = @{}
+    $jsonRows = New-Object System.Collections.Generic.List[string]
+    foreach ($row in $rows) {
+      $f = ([string]$row).Split("`t")
+      $p = $f[$iPath]
+      if ($p.StartsWith('#')) {
+        $n = 0
+        if ([int]::TryParse($p.Substring(1), [ref]$n) -and $n -ge 1 -and $n -le $paths.Count) { $p = [string]$paths[$n - 1]; $f[$iPath] = $p }
+      }
+      if ($Json) { $jsonRows.Add([string]::Join("`t", $f)) }
+      if ($f.Length -le $iScale -or $f[$iVis] -ne '1') { continue }
+      $visible++
+      $typ = $f[$iType]
+      # PowerShell's [double] cast of a string is culture-invariant; much faster than a function call here.
+      $alpha = if ($f[$iAlpha] -ne '') { [double]$f[$iAlpha] } else { 1.0 }
+      $s = if ($f[$iScale] -ne '') { [double]$f[$iScale] } else { 1.0 }
+      if ($s -le 0) { $s = 1.0 }
+      $k = $s / $uiS
+      if ($f[$iL] -eq '' -or $f[$iW] -eq '') { continue }
+      $l = [double]$f[$iL]; $bb = [double]$f[$iB]; $w = [double]$f[$iW]; $h = [double]$f[$iH]
+      # Scrolled wholly ("1") or partly ("p") out of its scroll frame: not a layout fault.
+      $clip = if ($f.Length -gt $iClip) { $f[$iClip] } else { '' }
+      $isRegion = $typ -eq 'Texture' -or $typ -eq 'FontString' -or $typ -eq 'Line' -or $typ -eq 'MaskTexture'
+      $text = if ($f.Length -gt $iText) { $f[$iText] } else { '' }
+      $hasContent = ($f.Length -gt $iAtlas -and ($f[$iTex] -ne '' -or $f[$iAtlas] -ne '')) -or $text -ne ''
+      $l = $l * $k; $bb = $bb * $k; $w = $w * $k; $h = $h * $k
+      $rect = '({0:0},{1:0} {2:0}x{3:0})' -f $l, $bb, $w, $h
+      if ($alpha -gt 0 -and $w -gt 0 -and $h -gt 0 -and $clip -eq '') {
+        if ($l -lt -1 -or $bb -lt -1 -or ($l + $w) -gt ($uiW + 1) -or ($bb + $h) -gt ($uiH + 1)) { $issues['offscreen'].Add("$p $typ $rect") }
+        elseif ($null -ne $wl -and $p -notmatch '/NineSlice/|PortraitContainer|CloseButton' -and ($l -lt $wl - 2 -or $bb -lt $wb - 2 -or ($l + $w) -gt $wrr + 2 -or ($bb + $h) -gt $wt + 2)) { $issues['outside'].Add("$p $typ $rect") }
+      }
+      if ($isRegion -and $hasContent -and $alpha -gt 0 -and $clip -ne '1' -and ($w -le 0 -or $h -le 0)) { $issues['zero'].Add("$p $typ $rect") }
+      if ($f.Length -gt $iTrunc -and $f[$iTrunc] -eq '1') { $issues['truncated'].Add("$p `"$text`" $rect") }
+      if ($typ -eq 'Texture' -and $f.Length -gt $iAtlas -and $f[$iTex] -eq '' -and $f[$iAtlas] -eq '' -and $alpha -gt 0 -and $w -gt 0 -and $h -gt 0) { $issues['noTexture'].Add("$p $rect") }
+      # Off: the real client always reports an atlas's sub-rect as texcoords, so this flagged every atlas.
+      if ($false -and $f.Length -gt $iAtc -and $f[$iAtc] -eq '1') { $issues['atlasTc'].Add("$p atlas $($f[$iAtlas])") }
+      # Siblings of the same type that overlap: text on text, button on button.
+      if ($alpha -gt 0 -and $w -gt 0 -and $h -gt 0 -and $clip -ne '1' -and (($typ -eq 'FontString' -and $text -ne '') -or $typ -eq 'Button' -or $typ -eq 'CheckButton')) {
+        $cut = $p.LastIndexOf('/')
+        $key = $typ + '|' + $(if ($cut -gt 0) { $p.Substring(0, $cut) } else { '' })
+        if (-not $groups.ContainsKey($key)) { $groups[$key] = New-Object System.Collections.Generic.List[object] }
+        $groups[$key].Add(@($p, $l, $bb, ($l + $w), ($bb + $h), $text))
+      }
+    }
+    foreach ($g in $groups.Values) {
+      if ($g.Count -lt 2 -or $g.Count -gt 300) { continue }
+      for ($i = 0; $i -lt $g.Count; $i++) {
+        for ($j = $i + 1; $j -lt $g.Count; $j++) {
+          $a = $g[$i]; $c = $g[$j]
+          if ($a[1] -lt $c[3] - 1 -and $c[1] -lt $a[3] - 1 -and $a[2] -lt $c[4] - 1 -and $c[2] -lt $a[4] - 1) {
+            $label = "$($a[0]) x $($c[0])"
+            if ($a[5]) { $label += ' ("' + $a[5] + '" / "' + $c[5] + '")' }
+            $issues['overlap'].Add($label)
+          }
+        }
+      }
+    }
+    $probe = $st['probe']
+    if ($probe) {
+      foreach ($hit in (As-List $probe['hits'])) {
+        if ($hit) { $issues['flicker'].Add("$($hit['path']) $($hit['type']) flips $($hit['flips']) reversals $($hit['reversals']): $($hit['events'])") }
+      }
+    }
+    $fresh = @{}
+    foreach ($k in $kinds) {
+      $now = New-Object 'System.Collections.Generic.HashSet[string]'
+      $fresh[$k] = New-Object System.Collections.Generic.List[string]
+      foreach ($item in $issues[$k]) {
+        $id = ($item -split ' ', 2)[0]
+        if ($across[$k].ContainsKey($id)) { $across[$k][$id]++ } else { $across[$k][$id] = 1 }
+        [void]$now.Add($id)
+        if ($k -eq 'flicker' -or -not $prev[$k].Contains($id)) { $fresh[$k].Add($item) }
+      }
+      $prev[$k] = $now
+    }
+
+    $shotText = if ($file) { $file.Path } elseif ($shot -and $shot['ok'] -eq $false) { "screenshot failed ($($shot['err']))" } elseif ($shot) { "no screenshot file within 2 s of $($shot['time'])" } else { 'no screenshot' }
+    $report.Add('')
+    $report.Add(('[{0:00}] {1}  view={2} mode={3} after={4} prompts={5} focus={6} ({7})' -f [int]$st['index'], $name, $st['view'], $st['mode'], $st['after'], $st['prompts'], $st['focus'], $st['focusZone']))
+    $report.Add("     shot: $shotText")
+    if ($st['error']) { $report.Add("     ERROR: $($st['error'])") }
+    if ($st['note']) { $report.Add("     note: $($st['note'])") }
+    if ($st['rectValid'] -eq $false) { $report.Add('     rect not valid when dumped') }
+    $counts = @($kinds | ForEach-Object { "$_ $($issues[$_].Count)" }) -join ', '
+    $report.Add("     rows $($rows.Count) ($visible visible$(if ($st['truncated']) { ', TRUNCATED at the row cap' })): $counts")
+    foreach ($k in $kinds) {
+      $list = $fresh[$k]
+      $limit = if ($k -eq 'flicker') { 20 } else { 6 }
+      for ($i = 0; $i -lt [Math]::Min($list.Count, $limit); $i++) { $report.Add("       ${k}: $($list[$i])") }
+      if ($list.Count -gt $limit) { $report.Add("       ${k}: ... $($list.Count - $limit) more new") }
+    }
+    if ($probe) {
+      $perf = ''
+      if ($null -ne $probe['recentAverageMs']) { $perf = ", addon avg $($probe['recentAverageMs']) ms peak $($probe['peakMs']) ms" }
+      $report.Add("     probe: $($probe['frames']) frames in $($probe['seconds']) s, $($probe['watched']) watched, $($probe['changed']) changed, $((As-List $probe['hits']).Count) flicker hits$perf")
+    }
+    if ($Json) {
+      $jsonSteps.Add([ordered]@{
+        index = $st['index']; name = $name; page = $st['page']; view = $st['view']; mode = $st['mode']; after = $st['after']
+        prompts = $st['prompts']; focus = $st['focus']; focusZone = $st['focusZone']; note = $st['note']; error = $st['error']
+        screenshot = if ($file) { $file.Path } else { $null }; shot = $shot; rectValid = $st['rectValid']
+        window = $st['window']; windowScale = $st['windowScale']; truncated = $st['truncated']
+        issues = $issues; probe = $probe; rows = $jsonRows.ToArray()
+      })
+    }
+  }
+
+  $report.Add('')
+  $report.Add('# across steps (path: number of steps)')
+  foreach ($k in $kinds) {
+    $d = $across[$k]
+    if ($d.Count -eq 0) { continue }
+    $top = @($d.GetEnumerator() | Sort-Object -Property Value -Descending | Select-Object -First 25 | ForEach-Object { "$($_.Key): $($_.Value)" })
+    $report.Add("  ${k} ($($d.Count) distinct): $($top -join '; ')$(if ($d.Count -gt 25) { '; ...' })")
+  }
+  if ($Json) {
+    $target = if ($Out) { $Out } else { Join-Path ([IO.Path]::GetTempPath()) "agentcraft-capture-$($cap['runId']).json" }
+    $doc = [ordered]@{
+      runId = $cap['runId']; suite = $cap['suite']; version = $cap['version']; build = $cap['build']; screen = $cap['screen']
+      ui = $cap['ui']; started = $cap['started']; finished = $cap['finished']; stopped = $cap['stopped']; summary = $cap['summary']
+      errors = $cap['errors']; screenshotsDir = (Join-Path $Game 'Screenshots')
+      note = 'rows: tab-separated values named by fields; path resolved; anchor targets "#n" index paths (1-based); rects in the object''s own scale (multiply by the scale field, divide by ui.scale for UIParent units)'
+      fields = $fields; paths = $paths; steps = $jsonSteps.ToArray()
+    }
+    $text = ConvertTo-Json -InputObject $doc -Depth 12 -Compress
+    [IO.File]::WriteAllText([IO.Path]::GetFullPath($target), $text, $utf8)
+    $report.Add("# JSON written to $([IO.Path]::GetFullPath($target))")
+  }
+  Out-Text ($report -join "`n")
+}
+
 try {
   Initialize-Game
   switch ($Command.ToLower()) {
@@ -582,7 +910,8 @@ try {
     'log' { Cmd-Log }
     'file' { Cmd-File }
     'install' { Cmd-Install }
-    default { throw "Unknown command '$Command'. Use: overview, character, sv, binds, errors, log, file, install." }
+    'capture' { Cmd-Capture }
+    default { throw "Unknown command '$Command'. Use: overview, character, sv, binds, errors, log, file, install, capture." }
   }
 } catch {
   [Console]::Error.WriteLine("error: $($_.Exception.Message)")

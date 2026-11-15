@@ -26,9 +26,14 @@
 --   * No Shift/Ctrl variants (they are bar layers) and no @mouseover/@cursor.
 --   * Harmful casts use [@target,harm,nodead] so they never hit friends or corpses.
 --   * Name it after what it does, one word where possible ("Opener", "Fish").
---   * Install and Remove touch only macros Agentcraft wrote (bodies recorded
---     in AgentcraftDB.macroBodies). A player's own macro of the same name is
---     "taken" until they pick Replace. Remove also unbinds the macro's keys.
+--   * Install and Remove touch only macros Agentcraft wrote (every body it
+--     ever wrote is recorded in AgentcraftDB.macroWritten, so a copy on
+--     another character still counts). A player's own macro of the same name
+--     is "taken" (Name in use) until they pick Replace. Remove also unbinds
+--     the macro's keys.
+--   * When a live macro's text changes, add its old text to L.previous[name]
+--     (a list) so installed copies show "Update", not "Name in use".
+--     A macro dropped from the library goes in L.retired (General.lua).
 local _, ns = ...
 local L = {}
 ns.MacroLibrary = L
@@ -45,6 +50,8 @@ local CATEGORY_RANK = {}
 for i, c in ipairs(L.categories) do CATEGORY_RANK[c.key] = i end
 
 L.macros = {}
+-- Older texts of live macros, by name: { "old body", ... }. Data files add to it.
+L.previous = {}
 
 function L.Add(m)
   assert(m.name and #m.name <= 16, "macro name missing or longer than 16 characters: " .. tostring(m.name))
@@ -76,9 +83,14 @@ end
 -- { { key, label, type, color }, ... } sorted by type then label.
 function L.Tags(m)
   if m._tags then return m._tags end
-  local tags = {}
+  local tags, seenKey, seenLabel = {}, {}, {}
+  -- One tag per label: Fish's profession "Fishing" already says what the
+  -- "Fishing" category would, so the filter menu lists it once.
   local function Add(kind, value, label, color)
-    tags[#tags + 1] = { key = kind .. ":" .. value, label = label, type = kind,
+    local key = kind .. ":" .. value
+    if seenKey[key] or seenLabel[label:lower()] then return end
+    seenKey[key], seenLabel[label:lower()] = true, true
+    tags[#tags + 1] = { key = key, label = label, type = kind,
       color = color or L.tagTypes[kind].color }
   end
   if m.class then
@@ -154,10 +166,14 @@ end
 
 local known
 
-local function ScanBank(map, bank, from, to)
+-- Only learned spells count: the 12.x spellbook also lists spells you learn
+-- later (FutureSpell) and flyouts. want = the item type to accept.
+local function ScanBank(map, bank, from, to, want)
   for i = from, to do
     local item = C_SpellBook.GetSpellBookItemInfo(i, bank)
-    if item and item.name then map[item.name] = true end
+    if item and item.name and (want == nil or item.itemType == nil or item.itemType == want) then
+      map[item.name] = true
+    end
   end
 end
 
@@ -167,12 +183,13 @@ function L.Known()
   known = {}
   if C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines then
     local player = Enum.SpellBookSpellBank.Player
+    local types = Enum.SpellBookItemType or {}
     for tab = 1, C_SpellBook.GetNumSpellBookSkillLines() do
       local line = C_SpellBook.GetSpellBookSkillLineInfo(tab)
-      if line then ScanBank(known, player, line.itemIndexOffset + 1, line.itemIndexOffset + line.numSpellBookItems) end
+      if line then ScanBank(known, player, line.itemIndexOffset + 1, line.itemIndexOffset + line.numSpellBookItems, types.Spell) end
     end
     if C_SpellBook.HasPetSpells then
-      ScanBank(known, Enum.SpellBookSpellBank.Pet, 1, C_SpellBook.HasPetSpells() or 0)
+      ScanBank(known, Enum.SpellBookSpellBank.Pet, 1, C_SpellBook.HasPetSpells() or 0, types.PetAction)
     end
   end
   return known
@@ -230,18 +247,29 @@ local function Weapons()
   if main and not IsPole(main) then return main, off end
   local saved = ns.charDB and ns.charDB.weapons
   if saved then return saved.main, saved.off end
-  -- Never seen: take the first main-hand weapon and off-hand item in your bags.
+  -- Never seen: take the first bound main-hand weapon and off-hand item in
+  -- your bags. Unbound items (a BoE you mean to sell) are skipped, and a
+  -- two-hander takes no off-hand (equipping one would unequip it again).
   main, off = nil, nil
-  for _, id in ipairs(BagItemIDs()) do
-    local _, _, _, equipLoc, _, classID = C_Item.GetItemInfoInstant(id)
-    if not main and classID == 2 and not IsPole(id) and (equipLoc == "INVTYPE_WEAPON"
-      or equipLoc == "INVTYPE_WEAPONMAINHAND" or equipLoc == "INVTYPE_2HWEAPON") then
-      main = id
-    elseif not off and (equipLoc == "INVTYPE_HOLDABLE" or equipLoc == "INVTYPE_SHIELD"
-      or equipLoc == "INVTYPE_WEAPONOFFHAND") then
-      off = id
+  local mainLoc
+  local getInfo = C_Container and C_Container.GetContainerItemInfo
+  for bag = 0, NUM_BAG_SLOTS or 4 do
+    for slot = 1, C_Container.GetContainerNumSlots(bag) or 0 do
+      local id = C_Container.GetContainerItemID(bag, slot)
+      local info = id and getInfo and getInfo(bag, slot)
+      if id and not (info and info.isBound == false) then
+        local _, _, _, equipLoc, _, classID = C_Item.GetItemInfoInstant(id)
+        if not main and classID == 2 and not IsPole(id) and (equipLoc == "INVTYPE_WEAPON"
+          or equipLoc == "INVTYPE_WEAPONMAINHAND" or equipLoc == "INVTYPE_2HWEAPON") then
+          main, mainLoc = id, equipLoc
+        elseif not off and (equipLoc == "INVTYPE_HOLDABLE" or equipLoc == "INVTYPE_SHIELD"
+          or equipLoc == "INVTYPE_WEAPONOFFHAND") then
+          off = id
+        end
+      end
     end
   end
+  if mainLoc == "INVTYPE_2HWEAPON" then off = nil end
   return main, off
 end
 L.Weapons = Weapons
@@ -287,14 +315,66 @@ local function IndexOf(name)
   return 0
 end
 
-local function Trim(s) return (s or ""):gsub("%s+$", "") end
+local function Trim(s) return ((s or ""):gsub("%s+$", "")) end
 
--- Bodies Agentcraft wrote, by macro name (account SavedVariables), so a macro
--- of yours that happens to share a library name is never overwritten or deleted.
-local function Written()
+-- Every body Agentcraft ever wrote, by macro name (account SavedVariables):
+-- { [name] = { [body] = true } }. A set, not the last body, because class
+-- macros live in each character's own tab: one hunter updating Melee must
+-- not turn another hunter's older copy into "Name in use". Removing a macro
+-- keeps its record for the same reason.
+local function Written(name, peek)
   if not ns.db then return {} end
-  ns.db.macroBodies = ns.db.macroBodies or {}
-  return ns.db.macroBodies
+  local all = ns.db.macroWritten
+  if not all then
+    all = {}
+    ns.db.macroWritten = all
+    -- 0.26.0 kept one body per name (macroBodies); carry it over once.
+    for n, body in pairs(ns.db.macroBodies or {}) do
+      if type(body) == "string" then all[n] = { [Trim(body)] = true } end
+    end
+  end
+  if peek then return all[name] or {} end
+  all[name] = all[name] or {}
+  return all[name]
+end
+
+-- macroBodies (the last body per name) is still kept for code that reads it.
+local function Record(name, body)
+  Written(name)[Trim(body)] = true
+  if ns.db then
+    ns.db.macroBodies = ns.db.macroBodies or {}
+    ns.db.macroBodies[name] = Trim(body)
+  end
+end
+
+-- Whether Agentcraft ever wrote this exact text under this name. Retired
+-- shapes (General.lua) use it so a macro you wrote yourself is never deleted.
+function L.Wrote(name, body)
+  return Written(name, true)[Trim(body)] == true
+end
+
+-- Whether a macro named name with this body is a retired Agentcraft macro
+-- that may be deleted (Controller Apply uses it). A name still in the library
+-- never is. Fixed texts in L.retired match exactly; texts players often
+-- write themselves (L.retiredCommon) and the shapes (L.retiredShapes) also
+-- need Agentcraft's record of writing them.
+function L.RetiredDeletable(name, body)
+  for _, m in ipairs(L.macros) do if m.name == name then return false end end
+  body = Trim(body)
+  local fixed = L.retired and L.retired[name]
+  if fixed and Trim(fixed) == body then
+    return not (L.retiredCommon and L.retiredCommon[name]) or L.Wrote(name, body)
+  end
+  local shape = L.retiredShapes and L.retiredShapes[name]
+  return shape and shape(body) and true or false
+end
+
+-- Whether body is an older library text of this macro.
+local function Previous(name, body)
+  for _, old in ipairs(L.previous[name] or {}) do
+    if Trim(old) == body then return true end
+  end
+  return false
 end
 
 -- Whether the macro at index is one Agentcraft wrote.
@@ -302,11 +382,10 @@ local function IsOurs(m, index, legacy, body)
   if legacy then return true end
   local current = Trim(GetMacroBody(index))
   if body and current == Trim(body) then
-    Written()[m.name] = current
+    Record(m.name, current)
     return true
   end
-  -- An older Agentcraft text of a macro that kept its name (L.retired) is ours too.
-  return Written()[m.name] == current or (L.retired and L.retired[m.name] == current) or false
+  return L.Wrote(m.name, current) or Previous(m.name, current)
 end
 
 -- A class or racial macro sitting in the shared account tab (installed
@@ -318,9 +397,9 @@ end
 -- Returns state, index, detail. States:
 --   installed  in /macro and up to date
 --   update     in /macro but its text differs (spell or item changed)
---   taken      a macro of yours already has this name; left alone unless
---              you pick Replace on that macro
---   blocked    can't be installed yet; detail says why
+--   taken      a macro of yours already has this name (Name in use); left
+--              alone unless you pick Replace on that macro
+--   blocked    can't be installed yet; detail is the missing spell, or why
 --   ready      can be installed
 function L.State(m)
   local index, legacy = IndexOf(m.name)
@@ -331,51 +410,88 @@ function L.State(m)
     if legacy or InWrongTab(m, index) or (body and Trim(GetMacroBody(index)) ~= Trim(body)) then return "update", index end
     return "installed", index
   end
-  if missing then return "blocked", 0, "learn " .. missing end
+  if missing then return "blocked", 0, missing end
   if not body then return "blocked", 0, why end
   return "ready", 0
 end
 
 local function IconFor(m) return m.iconFile or "INV_Misc_QuestionMark" end
 
+-- Free slots in the General (account) and Character macro tabs.
+local function FreeSlots()
+  local acct, char = 0, 0
+  if GetNumMacros then acct, char = GetNumMacros() end
+  return (MAX_ACCOUNT_MACROS or 120) - (acct or 0), (MAX_CHARACTER_MACROS or 18) - (char or 0)
+end
+
+-- Moves key bindings from one macro name to another (legacy "AC X" -> "X").
+local function Rebind(from, to)
+  if not (GetBindingKey and SetBinding) then return false end
+  local keys = { GetBindingKey("MACRO " .. from) }
+  for _, key in ipairs(keys) do SetBinding(key, "MACRO " .. to) end
+  return #keys > 0
+end
+
+local function SaveBinds()
+  if SaveBindings and GetCurrentBindingSet then SaveBindings(GetCurrentBindingSet()) end
+end
+
 -- replace = true also overwrites a macro of yours with the same name (the
--- detail panel's Replace button); ticked installs never do.
+-- detail panel's Replace button); checked installs never do.
 function L.Install(list, replace)
   if InCombatLockdown() then return ns.Print("can't change macros in combat.") end
-  local done, skipped = {}, {}
+  local done, skipped, moved, rebound = {}, {}, {}, false
+  local freeAcct, freeChar = FreeSlots()
   for _, m in ipairs(list) do
     local body, why = L.Resolve(m)
     local missing = L.MissingSpell(m)
     local index, legacy = IndexOf(m.name)
+    local create = index == 0 or InWrongTab(m, index)
     if missing then
       skipped[#skipped + 1] = m.name .. " (learn " .. missing .. ")"
     elseif not body then
       skipped[#skipped + 1] = m.name .. " (" .. why .. ")"
     elseif index > 0 and not replace and not IsOurs(m, index, legacy, body) then
-      skipped[#skipped + 1] = m.name .. " (your own macro has this name)"
+      skipped[#skipped + 1] = m.name .. " (name in use by your own macro)"
+    elseif create and m.perCharacter and freeChar <= 0 then
+      skipped[#skipped + 1] = m.name .. " (Character macros full: " .. (MAX_CHARACTER_MACROS or 18) .. " of " .. (MAX_CHARACTER_MACROS or 18) .. ")"
+    elseif create and not m.perCharacter and freeAcct <= 0 then
+      skipped[#skipped + 1] = m.name .. " (General macros full: " .. (MAX_ACCOUNT_MACROS or 120) .. " of " .. (MAX_ACCOUNT_MACROS or 120) .. ")"
     else
       local ok, err
-      if index > 0 and InWrongTab(m, index) then
-        -- Recreate it in the character tab; put it back on your bar after.
-        DeleteMacro(index)
-        index = 0
-      end
-      if index > 0 then
-        ok, err = pcall(EditMacro, index, m.name, IconFor(m), body)
-      else
+      if create then
+        -- A new macro, or a character macro sitting in the General tab: the
+        -- new copy is created first, and the old one deleted only once that
+        -- worked, so a failure never loses the macro.
         ok, err = pcall(CreateMacro, m.name, IconFor(m), body, m.perCharacter and true or nil)
+        if ok and not (err and err ~= 0) then ok, err = false, "the game refused to create it" end
+        if ok then
+          if m.perCharacter then freeChar = freeChar - 1 else freeAcct = freeAcct - 1 end
+          if index > 0 then
+            DeleteMacro(index)
+            moved[#moved + 1] = m.name
+          end
+        end
+      else
+        ok, err = pcall(EditMacro, index, m.name, IconFor(m), body)
       end
       if ok then
+        -- Keys bound to the old "AC X" name now point at "X".
+        if legacy then rebound = Rebind("AC " .. m.name, m.name) or rebound end
         done[#done + 1] = m.name
-        Written()[m.name] = Trim(body)
+        Record(m.name, body)
       else
         skipped[#skipped + 1] = m.name .. " (" .. tostring(err) .. ")"
       end
     end
   end
-  if #done > 0 then ns.Print("installed " .. table.concat(done, ", ") .. ". Use Pick up to put one on a bar.") end
+  if rebound then SaveBinds() end
+  if #done > 0 then ns.Print("installed " .. table.concat(done, ", ") .. ". Use Pick Up to put one on a bar.") end
+  if #moved > 0 then
+    ns.Print("moved " .. table.concat(moved, ", ") .. " from General to Character macros; other characters no longer have the General copy.")
+  end
   if #skipped > 0 then ns.Print("skipped " .. table.concat(skipped, "; ")) end
-  if #done == 0 and #skipped == 0 then ns.Print("tick some macros first.") end
+  if #done == 0 and #skipped == 0 then ns.Print("check some macros first.") end
 end
 
 -- Clears every key bound to the macro, so no key is left pointing at nothing.
@@ -397,15 +513,14 @@ function L.Remove(list)
       if IsOurs(m, index, legacy, L.Resolve(m)) then
         unbound = Unbind(index) or unbound
         DeleteMacro(index)
-        Written()[m.name] = nil
         removed[#removed + 1] = m.name
       else
         kept[#kept + 1] = m.name
       end
     end
   end
-  if unbound and SaveBindings and GetCurrentBindingSet then SaveBindings(GetCurrentBindingSet()) end
-  if #kept > 0 then ns.Print("kept " .. table.concat(kept, ", ") .. ": your own macro has that name; delete it in /macro.") end
+  if unbound then SaveBinds() end
+  if #kept > 0 then ns.Print("kept " .. table.concat(kept, ", ") .. ": the name is in use by your own macro; delete it in /macro.") end
   if #removed > 0 then ns.Print("removed " .. table.concat(removed, ", "))
   elseif #kept == 0 then ns.Print("none of those are installed.") end
 end

@@ -56,26 +56,43 @@ function Env:installMacro(name)
   for _, m in ipairs(self.ns.MacroLibrary.macros) do
     if m.name == name then
       local body = assert(self.ns.MacroLibrary.Resolve(m))
-      self.W.macros[#self.W.macros + 1] = { name = name, icon = "INV_Misc_QuestionMark", body = body, perChar = m.perCharacter and true or false }
-      return #self.W.macros
+      local entry = { name = name, icon = "INV_Misc_QuestionMark", body = body, perChar = m.perCharacter and true or false }
+      self.W.macros[#self.W.macros + 1] = entry
+      return wow.MacroIndexOf(self.W, entry)
     end
   end
   error("no library macro named " .. name)
 end
 
 -- Gamepad storage slot for page (1-3) and a layout key like "RT A".
-local BAR = { none = 0, LT = 1, RT = 2, ["LT+RT"] = 3 }
-local BUTTON = { Left = 1, Up = 2, Right = 3, Down = 4, X = 5, Y = 6, B = 7, A = 8 }
+-- Literal numbers from an in-game snapshot (controller/gamepadBars on WoW
+-- Forever), not computed with Controller's own tables, so a wrong mapping in
+-- the addon or the mock shows up. Pages are 28 slots apart: the Top bar's
+-- fixed face buttons have no storage slot. Entries marked * follow the same
+-- pattern but had nothing placed in that snapshot.
+local PAD_SLOTS = {
+  [1] = { ["none Left"] = 181, ["none Up"] = 182, ["none Right"] = 183, ["none Down"] = 184,
+    ["LT Left"] = 185 --[[*]], ["LT Up"] = 186, ["LT Right"] = 187 --[[*]], ["LT Down"] = 188,
+    ["LT X"] = 189, ["LT Y"] = 190, ["LT B"] = 191, ["LT A"] = 192,
+    ["RT Left"] = 193 --[[*]], ["RT Up"] = 194, ["RT Right"] = 195, ["RT Down"] = 196,
+    ["RT X"] = 197, ["RT Y"] = 198, ["RT B"] = 199, ["RT A"] = 200, ["LT+RT B"] = 207 },
+  [2] = { ["none Up"] = 210, ["none Right"] = 211, ["RT Up"] = 222, ["RT Right"] = 223, ["RT Down"] = 224,
+    ["RT X"] = 225, ["RT B"] = 227, ["RT A"] = 228, ["LT+RT Down"] = 232, ["LT+RT X"] = 233,
+    ["LT+RT Y"] = 234, ["LT+RT B"] = 235, ["LT+RT A"] = 236 },
+  [3] = { ["none Left"] = 237, ["none Up"] = 238, ["none Right"] = 239, ["none Down"] = 240,
+    ["LT A"] = 248, ["RT X"] = 253, ["RT A"] = 256, ["LT+RT A"] = 264 },
+}
+H.PAD_SLOTS = PAD_SLOTS
 function Env:padSlot(page, key)
-  local layer, button = key:match("^(%S+) (%S+)$")
-  return 180 + (page - 1) * 32 + BAR[layer] * 8 + BUTTON[button]
+  local slot = PAD_SLOTS[page] and PAD_SLOTS[page][key]
+  return assert(slot, "no in-game reference for page " .. tostring(page) .. " " .. tostring(key) .. "; add it to PAD_SLOTS from a snapshot")
 end
 
 -- What a slot holds: "spell:Arcane Shot", "macro:Arcane", "item:6948", "flyout:253" or nil.
 function Env:slotText(slot)
   local a = self.W.actions[slot]
   if not a then return nil end
-  if a.type == "macro" then return "macro:" .. tostring(self.W.macros[a.id] and self.W.macros[a.id].name) end
+  if a.type == "macro" then local m = wow.MacroAt(self.W, a.id) return "macro:" .. tostring(m and m.name) end
   if a.type == "spell" then
     for _, s in ipairs(self.W.fixture.spells or {}) do if s.id == a.id then return "spell:" .. s.name end end
   end

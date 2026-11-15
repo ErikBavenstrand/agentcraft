@@ -5,12 +5,13 @@ test("every library macro resolves and passes the rules", function()
   local env = H.boot()
   local L = env.ns.MacroLibrary
   ok(#L.macros > 0, "library has macros")
+  local items = H.rules.ItemNames(env.ns)
   local errors = {}
   for _, m in ipairs(L.macros) do
     local body, why = L.Resolve(m)
     if not body then errors[#errors + 1] = m.name .. ": can't resolve (" .. tostring(why) .. ")"
     else
-      for _, p in ipairs(H.rules.CheckMacro(m, body)) do
+      for _, p in ipairs(H.rules.CheckMacro(m, body, items)) do
         if p.severity == "error" then errors[#errors + 1] = "[" .. p.rule .. "] " .. p.msg
         elseif p.severity == "warn" then note("[" .. p.rule .. "] " .. p.msg) end
       end
@@ -44,14 +45,27 @@ test("every macro a layout names exists in the library", function()
   if #missing > 0 then fail("layout names macros that aren't in the library: " .. table.concat(missing, ", ")) end
 end)
 
-test("every spell has one home per device (back-button mirrors are notes)", function()
+test("every spell has one home per device (page-1 back-button mirrors are notes)", function()
   local env = H.boot()
+  local lib = {}
+  for _, m in ipairs(env.ns.MacroLibrary.macros) do lib[m.name] = m end
+  -- Radials count as homes for the spells inside them (the fixture knows them).
+  local function Flyout(id)
+    local out = {}
+    local _, _, n = env.G.GetFlyoutInfo(id)
+    for slot = 1, n or 0 do
+      local _, _, _, name = env.G.GetFlyoutSlotInfo(id, slot)
+      out[#out + 1] = name
+    end
+    return out
+  end
+  local opts = { lib = lib, retired = env.ns.MacroLibrary.retired, flyout = Flyout }
   local errors = {}
   local classes = {}
   for class in pairs(env.ns.Layout.keyboard or {}) do classes[class] = true end
   for class in pairs(env.ns.Layout.controller or {}) do classes[class] = true end
   for class in pairs(classes) do
-    for _, p in ipairs(H.rules.CheckLayout(env.ns.Layout, class)) do
+    for _, p in ipairs(H.rules.CheckLayout(env.ns.Layout, class, opts)) do
       if p.severity == "error" then errors[#errors + 1] = p.msg else note(p.msg) end
     end
   end

@@ -45,11 +45,17 @@ L.Add({ name = "Reload", category = "utility", tags = { "interface", "controller
   desc = "Reloads the interface. Saves Agentcraft's snapshot and loads addon changes; the game menu has no reload.",
   body = "/reload" })
 
+-- Older Fish text (0.25): [equipped:] takes the plural subtype, so it never fished.
+L.previous.Fish = {
+  "#showtooltip Fishing\n/cast [equipped:Fishing Pole] Fishing\n/stopmacro [equipped:Fishing Pole]\n/equip Fishing Pole\n/equip Strong Fishing Pole\n/equip Darkwood Fishing Pole\n/equip Big Iron Fishing Pole\n/equip Seth's Graphite Fishing Pole",
+}
+
 -- Retired --------------------------------------------------------------------------
--- Removed from /macro on the next controller Apply, but only while their text
--- is still exactly what Agentcraft installed (yours are never touched); keys
--- bound to them are unbound. A name the library still offers (Melee, PetCare)
--- is kept: its old text here makes the Macros page show "Update".
+-- Macros the library no longer offers. Removed from /macro on the next
+-- controller Apply, but only while their text is still exactly what
+-- Agentcraft installed (yours are never touched); keys bound to them are
+-- unbound. Old texts of macros the library still offers go in L.previous
+-- instead (next to the macro), so the Macros page shows "Update".
 L.retired = {
   -- Done by the game's menus, the vendor window or Steam.
   Map = "/run ToggleWorldMap()",
@@ -76,7 +82,6 @@ L.retired = {
   Track = "#showtooltip\n/cast [mod:shift] Track Humanoids; [mod:ctrl] Track Beasts; Find Minerals",
   Trap = "#showtooltip\n/stopattack\n/petfollow\n/cast [mod:shift] Immolation Trap; Freezing Trap",
   Aspect = "#showtooltip\n/cast [mod:ctrl] Aspect of the Monkey; [combat] Aspect of the Hawk; Aspect of the Cheetah",
-  PetCare = "#showtooltip\n/cast [mod:shift][@pet,dead] Revive Pet; [nopet] Call Pet; Mend Pet",
   -- Mouse-only (@mouseover / @cursor); Eagle Eye isn't even ground-targeted.
   MarkMO = "#showtooltip Hunter's Mark\n/cast [@mouseover,harm,nodead][] Hunter's Mark",
   ScareMO = "#showtooltip Scare Beast\n/cast [@mouseover,harm,nodead][] Scare Beast",
@@ -88,16 +93,36 @@ L.retired = {
   Scatter = "#showtooltip Scatter Shot\n/targetenemy [noexists][dead][help]\n/petstay [@pettarget,harm]\n/petpassive [@pettarget,harm]\n/cast Scatter Shot",
   -- Covered by other buttons: separate Raptor/Mongoose/Disengage homes,
   -- Arcane starts Auto Shot, the library's autocast toggles. No /petattack.
-  Melee = "#showtooltip Raptor Strike\n/cast Mongoose Bite\n/cast Raptor Strike",
   Escape = "#showtooltip Disengage\n/petattack [@target,harm,nodead]\n/cast Disengage",
   AutoShot = "#showtooltip Auto Shot\n/targetenemy [noexists][dead][help]\n/cast !Auto Shot",
   PetAttack = "/petattack [@target,harm,nodead]",
   Growl = "/petautocasttoggle Growl",
+  -- Dropped in 0.26: they sent the pet in (/petattack); you send it yourself.
+  Pull = "#showtooltip Serpent Sting\n/petattack [@target,harm,nodead]\n/cast [@target,harm,nodead] Serpent Sting",
+  Mark = "#showtooltip Hunter's Mark\n/petattack [@target,harm,nodead]\n/cast [@target,harm,nodead] Hunter's Mark",
+  PetToggle = "/petfollow [@pettarget,exists]\n/petattack [@pettarget,noexists]",
+  Berserk = "#showtooltip Berserking\n/petattack [@target,harm,nodead]\n/cast Berserking",
+  BloodFury = "#showtooltip Blood Fury\n/petattack [@target,harm,nodead]\n/cast Blood Fury",
+  -- Autocast toggles that controller Apply generated before 0.26, cut to 16
+  -- characters. The library's Auto Howl, Auto Lightning... replace them.
+  ["Auto Furious How"] = "#showtooltip Furious Howl\n/petautocasttoggle Furious Howl",
+  ["Auto Lightning B"] = "#showtooltip Lightning Breath\n/petautocasttoggle Lightning Breath",
+  ["Auto Scorpid Poi"] = "#showtooltip Scorpid Poison\n/petautocasttoggle Scorpid Poison",
+  ["Auto Shell Shiel"] = "#showtooltip Shell Shield\n/petautocasttoggle Shell Shield",
+  ["Auto Thunderstom"] = "#showtooltip Thunderstomp\n/petautocasttoggle Thunderstomp",
 }
+
+-- Retired texts so short that players write the same macro themselves:
+-- deleted only when Agentcraft recorded writing them (L.RetiredDeletable).
+-- PetAttack isn't here: no /petattack macro may stay (owner rule), and
+-- versions before 0.26 kept no record, so its exact text is enough.
+L.retiredCommon = { ReadyCheck = true, Logout = true, Hearth = true, Growl = true, Screenshot = true }
 
 -- Retired macros whose text Agentcraft filled in from your bags (so it
 -- differs per person): deleted when every line still has the shape
--- Agentcraft wrote. A line you added yourself keeps the macro.
+-- Agentcraft wrote, and only when Agentcraft recorded writing that exact
+-- text. Most players write this same Feed Pet or /use macro themselves, so
+-- the shape alone is never enough. A line you added yourself keeps it too.
 local function OnlyLines(body, allowed)
   for line in (body .. "\n"):gmatch("(.-)\n") do
     local ok = line == ""
@@ -109,6 +134,8 @@ local function OnlyLines(body, allowed)
   return true
 end
 L.retiredShapes = {
-  Eat = function(b) return OnlyLines(b, { "#showtooltip", "/use " }) end,
-  Feed = function(b) return b:find("/cast Feed Pet", 1, true) and OnlyLines(b, { "#showtooltip", "/cast Feed Pet", "/use " }) end,
+  Eat = function(b) return L.Wrote("Eat", b) and OnlyLines(b, { "#showtooltip", "/use " }) end,
+  Feed = function(b)
+    return L.Wrote("Feed", b) and b:find("/cast Feed Pet", 1, true) and OnlyLines(b, { "#showtooltip", "/cast Feed Pet", "/use " }) or false
+  end,
 }

@@ -1,6 +1,7 @@
 -- Racial ability macros (Classic racials). Each shows only for its race.
 -- Only racials a macro improves; the rest go on bars as plain spells.
 -- Character macros: a racial belongs to one character. See Library.lua for the fields.
+-- Berserk and BloodFury (they sent the pet in) are retired: see L.retired in General.lua.
 local _, ns = ...
 local L = ns.MacroLibrary
 

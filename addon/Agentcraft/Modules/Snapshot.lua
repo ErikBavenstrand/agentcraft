@@ -8,7 +8,9 @@
 -- fields that turned "<secret>" keep their last readable value (secretKept).
 local _, ns = ...
 local M = ns.RegisterModule("Snapshot", {
-  description = "save your full character state on every reload and logout",
+  title = "Character Snapshot",
+  order = 40,
+  description = "Saves your character for Claude Code to read (on reload, logout and after changes).",
 })
 
 -- Compat helpers ----------------------------------------------------------------
@@ -48,6 +50,119 @@ local function Join(t)
   local parts = {}
   for i = 1, t.n or #t do parts[i] = Safe(t[i]) end
   return table.concat(parts, ", ")
+end
+
+-- Lists with headers (reputation, quest log, skills, currencies) count only
+-- the rows the player can see, so rows under a collapsed header are missed.
+-- Opens every collapsed header, runs read(), then closes them again. `list`:
+--   count()       number of rows
+--   header(i)     name, collapsed (name is nil for a row that isn't a header)
+--   expand(i), collapse(i)   optional; without expand nothing is opened
+-- Returns read()'s result; a header that stayed closed is listed in
+-- result.collapsedHeaders, so a reader knows the list is incomplete.
+local function WithHeadersOpen(list, read)
+  local opened, closed = {}, {}
+  local i = 1
+  while i <= (list.count() or 0) and i <= 2000 do
+    local name, collapsed = list.header(i)
+    if name and collapsed then
+      if list.expand and pcall(list.expand, i) and not select(2, list.header(i)) then
+        opened[#opened + 1] = name
+      else
+        closed[#closed + 1] = name
+      end
+    end
+    i = i + 1
+  end
+  local ok, result = pcall(read)
+  if #opened > 0 and list.collapse then
+    -- From the bottom up, so closing one doesn't shift the rows still to close.
+    local left = {}
+    for _, name in ipairs(opened) do left[name] = (left[name] or 0) + 1 end
+    for j = list.count() or 0, 1, -1 do
+      local name, collapsed = list.header(j)
+      if name and left[name] and left[name] > 0 and not collapsed then
+        pcall(list.collapse, j)
+        left[name] = left[name] - 1
+      end
+    end
+  end
+  if not ok then error(result, 0) end
+  if #closed > 0 and type(result) == "table" then result.collapsedHeaders = closed end
+  return result
+end
+
+-- The header lists, for WithHeadersOpen. Functions are looked up when called,
+-- because game versions differ in which exist.
+local function Call(t, name, ...) local f = t and t[name]; if f then return f(...) end end
+local HEADERS = {
+  reputation = C_Reputation and C_Reputation.GetFactionDataByIndex and {
+    count = function() return C_Reputation.GetNumFactions() end,
+    header = function(i)
+      local f = C_Reputation.GetFactionDataByIndex(i)
+      if f and f.isHeader then return f.name, f.isCollapsed and true or false end
+    end,
+    expand = C_Reputation.ExpandFactionHeader and function(i) C_Reputation.ExpandFactionHeader(i) end,
+    collapse = C_Reputation.CollapseFactionHeader and function(i) C_Reputation.CollapseFactionHeader(i) end,
+  } or {
+    count = function() return GetNumFactions and GetNumFactions() or 0 end,
+    header = function(i)
+      local name, _, _, _, _, _, _, _, isHeader, isCollapsed = GetFactionInfo(i)
+      if isHeader then return name, isCollapsed and true or false end
+    end,
+    expand = function(i) Call(_G, "ExpandFactionHeader", i) end,
+    collapse = function(i) Call(_G, "CollapseFactionHeader", i) end,
+  },
+  quests = C_QuestLog and C_QuestLog.GetInfo and {
+    count = function() return C_QuestLog.GetNumQuestLogEntries() end,
+    header = function(i)
+      local q = C_QuestLog.GetInfo(i)
+      if q and q.isHeader then return q.title, q.isCollapsed and true or false end
+    end,
+    expand = _G.ExpandQuestHeader and function(i) _G.ExpandQuestHeader(i) end,
+    collapse = _G.CollapseQuestHeader and function(i) _G.CollapseQuestHeader(i) end,
+  } or {
+    count = function() return GetNumQuestLogEntries and GetNumQuestLogEntries() or 0 end,
+    header = function(i)
+      local title, _, _, isHeader, isCollapsed = GetQuestLogTitle(i)
+      if isHeader then return title, isCollapsed and true or false end
+    end,
+    expand = function(i) Call(_G, "ExpandQuestHeader", i) end,
+    collapse = function(i) Call(_G, "CollapseQuestHeader", i) end,
+  },
+  currencies = C_CurrencyInfo and C_CurrencyInfo.GetCurrencyListInfo and {
+    count = function() return C_CurrencyInfo.GetCurrencyListSize() end,
+    header = function(i)
+      local c = C_CurrencyInfo.GetCurrencyListInfo(i)
+      if c and c.isHeader then return c.name, c.isHeaderExpanded == false end
+    end,
+    expand = C_CurrencyInfo.ExpandCurrencyList and function(i) C_CurrencyInfo.ExpandCurrencyList(i, true) end,
+    collapse = C_CurrencyInfo.ExpandCurrencyList and function(i) C_CurrencyInfo.ExpandCurrencyList(i, false) end,
+  },
+}
+-- Skills: the modern list (C_SkillInfo) or the classic one, each opened with
+-- its own Expand/CollapseSkillHeader (C_SkillInfo's when it has them).
+local function SkillHeaders(modern)
+  local api = modern and C_SkillInfo and C_SkillInfo.ExpandSkillHeader and C_SkillInfo or _G
+  return {
+    count = function()
+      if modern then return C_SkillInfo.GetNumSkillLines() end
+      return GetNumSkillLines()
+    end,
+    header = function(i)
+      if modern then
+        local ok, s = pcall(C_SkillInfo.GetSkillLineInfo, i)
+        if ok and type(s) == "table" and s.isHeader then
+          return s.name, (s.isCollapsed or s.isExpanded == false) and true or false
+        end
+        return
+      end
+      local name, isHeader, isExpanded = GetSkillLineInfo(i)
+      if isHeader then return name, not isExpanded end
+    end,
+    expand = function(i) Call(api, "ExpandSkillHeader", i) end,
+    collapse = function(i) Call(api, "CollapseSkillHeader", i) end,
+  }
 end
 
 -- Sections ----------------------------------------------------------------------
@@ -168,35 +283,41 @@ local function Skills()
   if C_SkillInfo and C_SkillInfo.GetNumSkillLines and C_SkillInfo.GetSkillLineInfo then
     -- Modern-engine clients (WoW Forever): "Name rank/max (+mod)" grouped
     -- under their header, such as "Weapon Skills".
-    local section = "Skills"
-    for i = 1, C_SkillInfo.GetNumSkillLines() do
-      local ok, s = pcall(C_SkillInfo.GetSkillLineInfo, i)
-      if ok and type(s) == "table" and s.name then
-        if s.isHeader then
-          section = s.name
-        else
-          out[section] = out[section] or {}
-          local text = string.format("%s %d/%d%s", s.name, s.rank or 0, s.maxRank or 0,
-            (s.modifier and s.modifier ~= 0) and (" (+" .. s.modifier .. ")") or "")
-          local dup = false
-          for _, existing in ipairs(out[section]) do if existing == text then dup = true end end
-          if not dup then table.insert(out[section], text) end
+    WithHeadersOpen(SkillHeaders(true), function()
+      local section = "Skills"
+      for i = 1, C_SkillInfo.GetNumSkillLines() do
+        local ok, s = pcall(C_SkillInfo.GetSkillLineInfo, i)
+        if ok and type(s) == "table" and s.name then
+          if s.isHeader then
+            section = s.name
+          else
+            out[section] = out[section] or {}
+            local text = string.format("%s %d/%d%s", s.name, s.rank or 0, s.maxRank or 0,
+              (s.modifier and s.modifier ~= 0) and (" (+" .. s.modifier .. ")") or "")
+            local dup = false
+            for _, existing in ipairs(out[section]) do if existing == text then dup = true end end
+            if not dup then table.insert(out[section], text) end
+          end
         end
       end
-    end
+      return out
+    end)
   end
   if GetNumSkillLines then
-    local section = "Skills"
-    for i = 1, GetNumSkillLines() do
-      local name, isHeader, _, rank, _, mod, max = GetSkillLineInfo(i)
-      if isHeader then
-        section = name
-      elseif name then
-        out[section] = out[section] or {}
-        table.insert(out[section], string.format("%s %d/%d%s", name, rank or 0, max or 0,
-          (mod and mod ~= 0) and (" (+" .. mod .. ")") or ""))
+    WithHeadersOpen(SkillHeaders(false), function()
+      local section = "Skills"
+      for i = 1, GetNumSkillLines() do
+        local name, isHeader, _, rank, _, mod, max = GetSkillLineInfo(i)
+        if isHeader then
+          section = name
+        elseif name then
+          out[section] = out[section] or {}
+          table.insert(out[section], string.format("%s %d/%d%s", name, rank or 0, max or 0,
+            (mod and mod ~= 0) and (" (+" .. mod .. ")") or ""))
+        end
       end
-    end
+      return out
+    end)
   end
   if GetProfessions then
     -- Empty profession slots are nil, so walk every slot (ipairs stops at the first nil).
@@ -444,6 +565,9 @@ local function Buffs()
       local ok, a = pcall(C_UnitAuras.GetAuraDataByIndex, "player", i, "HELPFUL")
       if not ok then error("auras are secret right now: " .. tostring(a), 0) end
       name = a and a.name
+      -- The 12.x client may return AuraData with secret fields instead of
+      -- raising: keep the last readable list then, too.
+      if name ~= nil and issecretvalue and issecretvalue(name) then error("auras are secret right now", 0) end
     elseif UnitBuff then
       name = UnitBuff("player", i)
     end
@@ -453,7 +577,7 @@ local function Buffs()
   return list
 end
 
-local function Reputation()
+local function ReadReputation()
   local list = {}
   if C_Reputation and C_Reputation.GetFactionDataByIndex then
     for i = 1, C_Reputation.GetNumFactions() do
@@ -476,7 +600,7 @@ local function Reputation()
   return list
 end
 
-local function Quests()
+local function ReadQuests()
   local list = {}
   if C_QuestLog and C_QuestLog.GetNumQuestLogEntries and C_QuestLog.GetInfo then
     for i = 1, C_QuestLog.GetNumQuestLogEntries() do
@@ -496,6 +620,10 @@ local function Quests()
   end
   return list
 end
+
+-- Read with every header open, so collapsed ones don't drop rows.
+local function Reputation() return WithHeadersOpen(HEADERS.reputation, ReadReputation) end
+local function Quests() return WithHeadersOpen(HEADERS.quests, ReadQuests) end
 
 -- Action slots 1-180 plus the Gamepad UI's slots after them (from 181 on this
 -- client), with their key, e.g. "Q | spell | 13550 | Serpent Sting".
@@ -542,7 +670,8 @@ local SECTIONS = {
 -- Extension points for SnapshotMore.lua and SnapshotCached.lua -----------------
 
 M.util = { SpellName = SpellName, ItemName = ItemName, LinkName = LinkName, Money = Money,
-  Pack = Pack, Join = Join }
+  Pack = Pack, Join = Join, IsSecret = IsSecret, Keep = Keep,
+  WithHeadersOpen = WithHeadersOpen, HEADERS = HEADERS }
 
 function M.CharKey()
   return (UnitName("player") or "?") .. "-" .. (GetRealmName() or "?")
@@ -606,6 +735,37 @@ local function SecretOnly(v)
     and (v:gsub("<secret>", "")):find("^[%s,/]*$") ~= nil
 end
 
+-- "a / b" or "a, b" split into its values and the separators between them.
+local function Split(v)
+  local parts, seps, pos = {}, {}, 1
+  while true do
+    local s, e = v:find("%s*[/,]%s*", pos)
+    if not s then parts[#parts + 1] = v:sub(pos); break end
+    parts[#parts + 1] = v:sub(pos, s - 1)
+    seps[#seps + 1] = v:sub(s, e)
+    pos = e + 1
+  end
+  return parts, seps
+end
+
+-- A field with some secret values, such as "<secret> / 1085" (health is
+-- secret, its maximum isn't): each secret value takes the old readable one
+-- in the same place. Returns nil when nothing could be filled in.
+local function MergeSecret(v, o)
+  if type(v) ~= "string" or type(o) ~= "string" or not v:find("<secret>", 1, true) then return nil end
+  local parts, seps = Split(v)
+  local oldParts = Split(o)
+  if #parts ~= #oldParts then return nil end
+  local filled = false
+  for i, p in ipairs(parts) do
+    if p == "<secret>" and oldParts[i] ~= "<secret>" then parts[i] = oldParts[i]; filled = true end
+  end
+  if not filled then return nil end
+  local out = {}
+  for i, p in ipairs(parts) do out[#out + 1] = p; out[#out + 1] = seps[i] end
+  return table.concat(out)
+end
+
 -- Puts old values back into fields that are secret now. Returns the field names.
 local function KeepOld(new, old, prefix, kept)
   for k, v in pairs(new) do
@@ -615,6 +775,12 @@ local function KeepOld(new, old, prefix, kept)
     elseif SecretOnly(v) and o ~= nil and type(o) ~= "table" and not SecretOnly(o) then
       new[k] = o
       kept[#kept + 1] = prefix .. tostring(k)
+    else
+      local merged = MergeSecret(v, o)
+      if merged then
+        new[k] = merged
+        kept[#kept + 1] = prefix .. tostring(k)
+      end
     end
   end
   return kept
@@ -631,8 +797,9 @@ function M:Save()
   end
   local snap = { time = now }
   for _, s in ipairs(SECTIONS) do
+    -- A section may return nil on purpose (its API is missing): store nothing.
     local ok, result = pcall(s[2])
-    snap[s[1]] = ok and result or ("error: " .. tostring(result))
+    if ok then snap[s[1]] = result else snap[s[1]] = "error: " .. tostring(result) end
   end
   if not LooksComplete(snap) then
     if self.db[key] then self.db[key].skippedIncomplete = snap.time end
@@ -659,6 +826,7 @@ function M:Save()
     for name in pairs(CACHED) do snap[name] = old[name] end
   end
   self.db[key] = snap
+  M.savedThisSession = true
   return key, true
 end
 
@@ -712,6 +880,20 @@ local function SaveNow()
   end
 end
 
-ns.RegisterAction("Snapshot", "Save now", SaveNow,
-  "Save your character state now (written to disk on /reload or logout).")
-ns.RegisterCommand("snapshot", "save your character state now (written on /reload)", SaveNow)
+-- Options text left of [Save Now]: when the snapshot was last saved, and
+-- whether that save still waits for a /reload to reach disk.
+local function SaveStatus()
+  local snap = M.db and M.db[M.CharKey()]
+  local t = snap and snap.time
+  if type(t) ~= "string" then return "Not saved yet." end
+  local day, hm = t:match("^(%S+) (%d+:%d+)")
+  if not hm then return "Last saved " .. t end
+  local shown = day == date("%Y-%m-%d") and hm or (day .. " " .. hm)
+  if M.savedThisSession then return "Last saved " .. shown .. " · written to disk at your next /reload" end
+  return "Last saved " .. shown
+end
+
+ns.RegisterAction("Snapshot", "Save Now", SaveNow,
+  "Saves your character now. It's written to disk at your next /reload or logout.", SaveStatus)
+ns.RegisterCommand("snapshot", "save your character now (written to disk on /reload)", SaveNow,
+  { module = "Snapshot" })

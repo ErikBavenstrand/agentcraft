@@ -27,7 +27,7 @@ test("one module's OnEnable error doesn't stop the modules after it", function()
     ok(mod.active, name .. " still enabled")
     ok(type(mod.db) == "table" and type(mod.charDB) == "table", name .. " got its db")
   end
-  ok(env:chatText():find("ActionBars failed to start", 1, true), "the failure is announced:\n" .. env:chatText())
+  ok(env:chatText():find("Action Bars failed to start", 1, true), "the failure is announced:\n" .. env:chatText())
   local reported = false
   for _, e in ipairs(env.W.errors) do if e:find("boom from ActionBars", 1, true) then reported = true end end
   ok(reported, "the error reaches geterrorhandler")

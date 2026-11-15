@@ -26,6 +26,7 @@ globals = {
   "SLASH_AGENTCRAFT1",
   "SLASH_AGENTCRAFT2",
   SlashCmdList = { fields = { "AGENTCRAFT" } },
+  StaticPopupDialogs = { fields = { "AGENTCRAFT_CONFIRM" } },  -- UI.Confirm's dialog
 }
 
 files["addon/Agentcraft/Modules/_Template.lua"] = {
@@ -45,7 +46,7 @@ read_globals = {
   "C_AddOns", "C_AuctionHouse", "C_ClassTalents", "C_Container", "C_CurrencyInfo", "C_CVar",
   "C_EquipmentSet", "C_FriendList", "C_GamePad", "C_GamepadUI", "C_GuildInfo", "C_Item", "C_Map",
   "C_MountJournal", "C_PetInfo", "C_PetJournal", "C_QuestLog", "C_Reputation", "C_Secrets", "C_SkillInfo", "C_Spell",
-  "C_SpellBook", "C_StableInfo", "C_TaxiMap", "C_Timer", "C_TooltipInfo", "C_TradeSkillUI", "C_Traits",
+  "C_SpellBook", "C_StableInfo", "C_TaxiMap", "C_Timer", "Screenshot", "C_TooltipInfo", "C_TradeSkillUI", "C_Traits",
   "C_UnitAuras", "C_XMLUtil", "Enum", "Constants",
 
   -- Frames and UI
@@ -53,10 +54,23 @@ read_globals = {
   "RaidWarningFrame", "RaidNotice_AddMessage", "UISpecialFrames", "EnumerateFrames", "PlaySound",
   "ChatTypeInfo", "SOUNDKIT", "RAID_CLASS_COLORS", "CLASS_ICON_TCOORDS", "LOCALIZED_CLASS_NAMES_MALE",
   "GamepadActionBarBindingUtil",
+  "ShowUIPanel", "HideUIPanel", "StaticPopup_Show", "GameTooltip_SetTitle", "GameTooltip_AddNormalLine",
+  "CreateAtlasMarkup", "C_Texture", "C_ClassColor", "C_InputInterfaceStyle", "GamepadMode",
+  "SetOverrideBindingClick", "ClearOverrideBindings", "SmartNavigation_MarkFrameIgnored",
+  "SmartNavigation_MarkFrameSubSection", "PanelTemplates_SetNumTabs", "PanelTemplates_SetTab",
+  "PanelTemplates_ResizeTabsToFit", "PanelTemplates_TabResize", "MenuUtil", "ScrollUtil",
+  "MinimalSliderWithSteppersMixin", "GetBindingText",
+  -- v2 window (UI/Input.lua, UI/Fx.lua, UI/Controls.lua): every one guarded by an existence check
+  "CreateColor", "GameTooltip_Hide", "GetCursorPosition", "GetFramerate", "IsShiftKeyDown", "IsControlKeyDown",
+  "IsAltKeyDown", "GetBindingFromClick", "GetCurrentKeyBoardFocus", "RegisterGameMenuEscHandler", "GameMenuEscPriority",
+  "InputIconTextureSetUtility", "InputDeviceIconSetManager", "SmartNavigation", "GlowEmitterFactory", "GlowEmitterMixin",
+  "NineSliceUtil",
+  "NORMAL_FONT_COLOR", "HIGHLIGHT_FONT_COLOR", "GRAY_FONT_COLOR", "DISABLED_FONT_COLOR", "GREEN_FONT_COLOR",
+  "RED_FONT_COLOR", "ORANGE_FONT_COLOR", "LIGHTBLUE_FONT_COLOR",
 
   -- Constants
   "ATTACHMENTS_MAX_RECEIVE", "BOOKTYPE_PET", "BOOKTYPE_SPELL", "MAX_ACCOUNT_MACROS", "MAX_CHARACTER_MACROS",
-  "NUM_BAG_SLOTS", "NUM_BANKBAGSLOTS", "NUM_PET_ACTION_SLOTS",
+  "NUM_BAG_SLOTS", "NUM_BANKBAGSLOTS", "NUM_PET_ACTION_SLOTS", "NOT_BOUND", "YES", "NO", "FILTER", "SEARCH",
 
   -- Action bars, cursor, bindings, macros
   "ClearCursor", "GetActionInfo", "GetActionText", "GetActionTexture", "GetCursorInfo", "HasAction",
@@ -77,7 +91,9 @@ read_globals = {
   "UnitCharacterPoints",
 
   -- Items, bags, equipment
-  "EquipItemByName", "GetContainerItemID", "GetContainerItemInfo", "GetContainerNumSlots",
+  "CursorHasItem", "EquipCursorItem", "EquipItemByName", "GetContainerItemID", "GetContainerItemInfo", "GetContainerNumSlots",
+  "UnitIsDeadOrGhost", "ExpandQuestHeader", "CollapseQuestHeader", "ExpandSkillHeader", "CollapseSkillHeader",
+  "ExpandFactionHeader", "CollapseFactionHeader",
   "GetInventoryItemCount", "GetInventoryItemDurability", "GetInventoryItemID", "GetInventoryItemLink",
   "GetInventoryItemQuality", "GetItemIcon", "GetItemInfo", "GetItemSpell", "GetWeaponEnchantInfo",
 

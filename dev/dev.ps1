@@ -8,10 +8,13 @@
     rules     the owner's macro and layout rules, statically (PowerShell only), plus a
               read-only look at the live game's keybinds and macros when the game is found
     lint      luacheck with ../.luacheckrc (needs luacheck)
+    lint-ui   the [lint] rules of dev/ui-rules.md, statically (dev/harness/uilint.lua; needs Lua 5.1)
     test      Lua 5.1 harness: loads the addon against a WoW API mock and runs dev/tests/*.lua
               (needs lua5.1, lua51 or luajit)
     types     lua-language-server --check with ../.luarc.json (needs LuaLS)
     globals   list the globals the addon reads and writes (to maintain .luacheckrc)
+    render    draw every page of the /ac window to dev/render/out/<page>.html (needs Lua 5.1);
+              -Fetch first downloads missing textures and atlas data (see dev/render/fetch.ps1). Not part of check.
   Exit codes: 0 pass, 1 findings or failures, 2 a needed tool is missing (skipped).
   Needs only Windows PowerShell 5.1 for toc, rules and globals.
 .EXAMPLE
@@ -22,7 +25,8 @@ param(
   [string]$Addon,
   [string]$WowPath,
   [switch]$NoGame,   # rules: skip the live game section
-  [switch]$Strict    # rules: warnings fail too
+  [switch]$Strict,   # rules: warnings fail too
+  [switch]$Fetch     # render: download missing textures and atlas data, then render again
 )
 
 $ErrorActionPreference = 'Stop'
@@ -549,7 +553,7 @@ function Get-Bar($tbl, [int]$n) {
 }
 
 # What an entry occupies, for the one-home check: its spells, plus your racial,
-# an item or a utility slot (those can be placed twice too).
+# an item, a utility slot, a macro or a flyout (those can be placed twice too).
 function Get-HomeNames($e) {
   $out = New-Object System.Collections.Generic.List[string]
   if ($e -isnot [LuaTable]) { return $out.ToArray() }
@@ -557,6 +561,10 @@ function Get-HomeNames($e) {
   if ($e.Get('racial') -eq $true) { $out.Add('<racial>') }
   if ($e.Has('item')) { $out.Add("<item $($e.Get('item'))>") }
   if ($e.Has('utility')) { $out.Add("<utility $($e.Get('utility'))>") }
+  # A macro or a radial is a home too (two { macro = "Skull" } entries, or a
+  # flyout twice, break "one home"). petauto and overflow entries are not homes.
+  if ($e.Has('macro')) { $out.Add("<macro $($e.Get('macro'))>") }
+  if ($e.Has('flyout')) { $out.Add("<flyout $($e.Get('flyout'))>") }
   return $out.ToArray()
 }
 
@@ -642,6 +650,7 @@ function Test-Layout($lib, $retired) {
       $pages = $layout.Get('pages')
       $paddles = $layout.Get('paddles')
       $homes = @{}      # spell -> list of page homes
+      $homePages = @{}  # spell -> pages (1-3) it has a home on
       $padHomes = @{}   # spell -> list of paddle homes
       if (-not $pages) { Add-Finding ERROR layout-parse "${rel}:$($layout.Line)" "$class controller layout has no pages"; continue }
       for ($p = 0; $p -lt $pages.Arr.Count; $p++) {
@@ -658,6 +667,8 @@ function Test-Layout($lib, $retired) {
             foreach ($s in (Get-HomeNames $e)) {
               if (-not $homes.ContainsKey($s)) { $homes[$s] = New-Object System.Collections.Generic.List[string] }
               $homes[$s].Add("p$($p + 1) $key (line $($e.Line))")
+              if (-not $homePages.ContainsKey($s)) { $homePages[$s] = @{} }
+              $homePages[$s][$p + 1] = $true
             }
           }
         }
@@ -686,13 +697,20 @@ function Test-Layout($lib, $retired) {
       foreach ($s in $padHomes.Keys) {
         if ($padHomes[$s].Count -gt 1) { Add-Finding ERROR layout-two-homes "${rel}:$($layout.Line)" "$class back buttons: '$s' is on $($padHomes[$s].Count) back buttons: $($padHomes[$s] -join ', ')" }
         if ($homes.ContainsKey($s)) {
+          # Owner rule: a back button may mirror a page-1 spell only. A home on
+          # page 2 or 3 makes the back button a second home.
+          $offPage1 = @($homePages[$s].Keys | Where-Object { $_ -ne 1 })
+          if ($offPage1.Count -gt 0) {
+            Add-Finding ERROR layout-two-homes "${rel}:$($layout.Line)" "$class controller: '$s' is on back button $($padHomes[$s] -join ', ') and has its home on page $($offPage1 -join ', ') ($($homes[$s] -join ', ')); back buttons may mirror page-1 spells only"
+            continue
+          }
           $pair = "back button $($padHomes[$s] -join ', ') and $($homes[$s] -join ', ')"
           if (-not $mirrors.Contains($pair)) { $mirrors[$pair] = New-Object System.Collections.Generic.List[string] }
           $mirrors[$pair].Add("'$s'")
         }
       }
       foreach ($pair in $mirrors.Keys) {
-        Add-Finding INFO layout-paddle-mirror "${rel}:$($layout.Line)" "$class controller: $($mirrors[$pair] -join ', ') on $pair (a mirror: allowed by the owner)"
+        Add-Finding INFO layout-paddle-mirror "${rel}:$($layout.Line)" "$class controller: $($mirrors[$pair] -join ', ') on $pair (a mirror of a page-1 spell: allowed by the owner)"
       }
       $all = @{}
       foreach ($s in $homes.Keys) { $all[$s] = $homes[$s] }
@@ -744,11 +762,18 @@ function Test-MacroWriters {
 # rules: live game (read-only)
 
 function Find-WowGame {
+  # An explicit -WowPath or WOW_PATH may name a flavor folder (_forever_ etc.)
+  # and is used as given. The registry usually points at a flavor folder too
+  # (often _retail_), so step up from it and prefer _forever_ below.
   $root = $WowPath
   if (-not $root) { $root = $env:WOW_PATH }
+  if ($root) {
+    $root = $root.TrimEnd('\')
+    if ((Test-Path -LiteralPath $root) -and ((Split-Path $root -Leaf) -match '^_.+_$')) { return $root }
+  }
   if (-not $root) {
     foreach ($key in 'HKLM:\SOFTWARE\WOW6432Node\Blizzard Entertainment\World of Warcraft', 'HKLM:\SOFTWARE\Blizzard Entertainment\World of Warcraft') {
-      try { $p = (Get-ItemProperty -Path $key -ErrorAction Stop).InstallPath; if ($p) { $root = $p.TrimEnd('\'); break } } catch {}
+      try { $p = (Get-ItemProperty -Path $key -ErrorAction Stop).InstallPath; if ($p) { $root = $p.TrimEnd('\'); if ((Split-Path $root -Leaf) -match '^_.+_$') { $root = Split-Path $root }; break } } catch {}
     }
   }
   if (-not $root) {
@@ -757,7 +782,6 @@ function Find-WowGame {
     }
   }
   if (-not $root -or -not (Test-Path -LiteralPath $root)) { return $null }
-  if ((Split-Path $root -Leaf) -match '^_.+_$') { return $root }
   foreach ($f in '_forever_', '_retail_', '_classic_era_', '_classic_', '_anniversary_') {
     $g = Join-Path $root $f
     if (Test-Path -LiteralPath (Join-Path $g 'WTF')) { return $g }
@@ -819,7 +843,7 @@ function Test-LiveGame($lib, $retired) {
       $have = ($installed[$name].Body -replace '\s+$', '')
       if ($want -ne $have) { Add-Finding INFO live-macro-outdated "$($installed[$name].Scope) macros-cache.txt" "installed macro '$name' differs from the library (Update on the Macros page)" }
     } elseif ($retired.ContainsKey($name)) {
-      Add-Finding INFO live-macro-retired "$($installed[$name].Scope) macros-cache.txt" "installed macro '$name' is retired; Apply deletes it only while its text is unchanged"
+      Add-Finding INFO live-macro-retired "$($installed[$name].Scope) macros-cache.txt" "installed macro '$name' is retired; Controller Apply deletes it while its text is unchanged (texts players often write, and the Eat/Feed shapes, only when Agentcraft recorded writing them)"
     }
   }
   Add-Finding INFO live-read 'game' "read $($installed.Count) installed macros and $(@($bindFiles).Count) bindings file(s) from the newest account/character (macros-cache.txt and bindings-cache.wtf are written on logout or /reload)"
@@ -835,7 +859,7 @@ function Cmd-Rules {
     else { $firstAt[$m.Name] = "$($m.File):$($m.Line)"; $lib[$m.Name] = $m }
     Test-Macro $m $items
     if ($data.Retired.ContainsKey($m.Name)) {
-      Add-Finding WARN macro-retired-name "$($m.File):$($m.Line)" "'$($m.Name)' is both a live macro and in L.retired ($($data.Retired[$m.Name].Where)); Apply deletes an installed copy whose text still equals the retired text"
+      Add-Finding INFO macro-retired-name "$($m.File):$($m.Line)" "'$($m.Name)' is live and in L.retired ($($data.Retired[$m.Name].Where)): Apply keeps it; the Macros page shows Update while its text equals the retired text"
     }
   }
   Test-Layout $lib $data.Retired
@@ -982,7 +1006,7 @@ function Cmd-Lint {
   Say "lint: $exe"
   # Relative paths, so the files["addon/Agentcraft/..."] sections in .luacheckrc match.
   # luacheck exits 0 clean, 1 warnings, 2 errors, 3+ crash.
-  $code = Invoke-Native $exe @((WowRel $Addon), 'dev/harness', 'dev/tests', '--config', '.luacheckrc', '--quiet', '--no-color') $WowDir
+  $code = Invoke-Native $exe @((WowRel $Addon), 'dev/harness', 'dev/tests', 'dev/render', '--config', '.luacheckrc', '--quiet', '--no-color') $WowDir
   if ($code -eq 0) { return 0 }
   return 1
 }
@@ -1008,6 +1032,17 @@ function Cmd-Test {
   return 1
 }
 
+# Static UI lint: the [lint] rules in dev/ui-rules.md (dev/harness/uilint.lua).
+# Errors fail; warnings print and pass. "-- ui-ok: <reason>" suppresses a line.
+function Cmd-LintUi {
+  $exe = Find-Lua
+  if (-not $exe) { return Missing 'Lua 5.1' @('scoop bucket add versions; scoop install lua51', 'winget install --id DEVCOM.LuaJIT -e') }
+  Say "lint-ui: $exe"
+  $code = Invoke-Native $exe @('dev/harness/uilint.lua', (WowRel $Addon)) $WowDir
+  if ($code -eq 0) { return 0 }
+  return 1
+}
+
 function Cmd-Types {
   $exe = Find-Tool @('lua-language-server')
   if (-not $exe) { return Missing 'lua-language-server' @('winget install --id LuaLS.lua-language-server -e') }
@@ -1017,6 +1052,34 @@ function Cmd-Types {
   return 1
 }
 
+
+# Offline render of the /ac window: dev/render/render.lua writes one HTML file
+# per page to dev/render/out, plus textures-missing.txt. -Fetch fills
+# dev/render/textures (and generates dev/render/atlases.lua) through
+# dev/render/fetch.ps1, then renders again.
+. (Join-Path $DevDir 'render\fetch.ps1')
+
+function Cmd-Render {
+  $exe = Find-Lua
+  if (-not $exe) { return Missing 'Lua 5.1' @('scoop bucket add versions; scoop install lua51', 'winget install --id DEVCOM.LuaJIT -e') }
+  $outDir = Join-Path $DevDir 'render\out'
+  $texDir = Join-Path $DevDir 'render\textures'
+  New-Item -ItemType Directory -Force -Path $outDir, $texDir | Out-Null
+  Say "render: $exe"
+  $argv = @('dev/render/render.lua', (WowRel $Addon), 'dev/render/out', 'dev/render/textures')
+  if ($Fetch) {
+    # A first, quiet pass lists the missing textures.
+    $first = Run-Native $exe $argv $WowDir
+    if ($first.Err) { Say $first.Err.TrimEnd() }
+    Say "fetch: missing textures from github.com/$TexRepo ($TexBranch), atlases and other files from wago.tools"
+    $null = Fetch-Textures (Join-Path $outDir 'textures-missing.txt') $texDir (Join-Path $DevDir 'render')
+    Say ""
+  }
+  $code = Invoke-Native $exe $argv $WowDir
+  Say "open $(Rel (Join-Path $outDir 'index.html'))"
+  if ($code -eq 0) { return 0 }
+  return 1
+}
 
 function Run-Step([string]$name, [scriptblock]$fn) {
   Say ""
@@ -1030,6 +1093,7 @@ function Cmd-Check {
   $results['toc'] = Run-Step 'toc' { Cmd-Toc }
   $results['rules'] = Run-Step 'rules' { Cmd-Rules }
   $results['lint'] = Run-Step 'lint' { Cmd-Lint }
+  $results['lint-ui'] = Run-Step 'lint-ui' { Cmd-LintUi }
   $results['types'] = Run-Step 'types' { Cmd-Types }
   $results['test'] = Run-Step 'test' { Cmd-Test }
   Say ""
@@ -1038,7 +1102,7 @@ function Cmd-Check {
   foreach ($k in $results.Keys) {
     $label = switch ($results[$k]) { 0 { 'pass' } 2 { 'skipped (tool missing)' } default { 'FAIL' } }
     if ($results[$k] -eq 1) { $fail = $true }
-    Say ("  {0,-6} {1}" -f $k, $label)
+    Say ("  {0,-8} {1}" -f $k, $label)
   }
   if ($fail) { return 1 }
   return 0
@@ -1051,10 +1115,12 @@ try {
     'toc' { $code = Cmd-Toc }
     'rules' { $code = Cmd-Rules }
     'lint' { $code = Cmd-Lint }
+    'lint-ui' { $code = Cmd-LintUi }
     'test' { $code = Cmd-Test }
     'types' { $code = Cmd-Types }
     'globals' { $code = Cmd-Globals }
-    default { Say "unknown command '$Command'. Commands: check, toc, rules, lint, test, types, globals"; $code = 1 }
+    'render' { $code = Cmd-Render }
+    default { Say "unknown command '$Command'. Commands: check, toc, rules, lint, lint-ui, test, types, globals, render"; $code = 1 }
   }
 } catch {
   Say "dev.ps1 crashed: $($_.Exception.Message) at line $($_.InvocationInfo.ScriptLineNumber)"
