@@ -33,7 +33,7 @@ test("window: PortraitFrameTemplate 1000x640, MEDIUM strata, 712x512 stage, v1 p
   local st = env.ns.UI.stage
   eq(math.floor(st:GetWidth() + 0.5), 712); eq(math.floor(st:GetHeight() + 0.5), 512)
   eq(f:GetFrameStrata(), "MEDIUM")
-  ok(#env:calls("ShowUIPanel") >= 1, "opened through ShowUIPanel (Gamepad UI focus)")
+  eq(#env:calls("ShowUIPanel"), 0, "never through ShowUIPanel: it taints Blizzard's panel manager (Escape got blocked)")
   local page = env.ns.UI.CurrentPage()
   ok(page and page.frame, "a page opens first on a fresh install")
   if page.api ~= 2 then eq(page.frame:GetWidth(), 600); eq(page.frame:GetHeight(), 450) end

@@ -281,6 +281,25 @@ L.FindPole = FindPole
 -- mechanism stays for macros that fill in fixed facts (none yet).
 L.placeholders = {}
 
+-- {POLETYPE}: the client's own name for the fishing pole subtype, the text
+-- [equipped:...] matches. A fixed fact of the client, not of your bags.
+-- "Fishing Poles" never matched on WoW Forever (owner, 0.32.2: Fish equipped
+-- the pole but the next press didn't cast), so it is read, not assumed:
+-- the item subtype of a pole you carry or wear, else the subclass name.
+L.placeholders.POLETYPE = function()
+  local pole = FindPole()
+  if pole and C_Item and C_Item.GetItemInfo then
+    local subType = select(7, C_Item.GetItemInfo(pole))
+    if type(subType) == "string" and subType ~= "" then return subType end
+  end
+  local info = (C_Item and C_Item.GetItemSubClassInfo) or _G.GetItemSubClassInfo
+  if info then
+    local name = info(2, 20)
+    if type(name) == "string" and name ~= "" then return name end
+  end
+  return "Fishing Poles"
+end
+
 -- The body with placeholders filled, or nil and a short reason.
 -- {KEY?} is optional: when it can't be filled, its line is dropped.
 function L.Resolve(m)

@@ -25,10 +25,12 @@ local function Swapper(env)
   return log
 end
 
-test("fishing: pole equipped at login puts the weapon back after the idle time", function()
+test("fishing: pole equipped at login puts the weapon back after the before-first-cast grace", function()
   local env = H.boot({ setup = PoleSetup, charDB = { weapons = { main = REAPER, mainLink = "|Hitem:12784|h[Arcanite Reaper]|h" } } })
   local log = Swapper(env)
   env:runTimers(30)
+  eq(#log, 0, "not yet: no cast, so it waits 2 minutes")
+  env:runTimers(100)
   noErrors(env)
   eq(env.W.fixture.equipped[16], REAPER, "reaper back in the main hand")
   eq(#log, 1, "one equip")
@@ -43,7 +45,7 @@ test("fishing: no restore while dead; gives up when the weapon is gone", functio
   eq(#log, 0, "no equip while dead")
   env.G.UnitIsDeadOrGhost = function() return false end
   env.W.fixture.bags[0][6] = nil
-  env:runTimers(10)
+  env:runTimers(130)
   noErrors(env)
   eq(#log, 0, "nothing to equip")
   ok(env:chatText():find("Couldn't find", 1, true), "says so: " .. env:chatText())
@@ -121,4 +123,20 @@ test("snapshot: bank rescans on bag changes while open, once per burst; recipes 
   env:fire("BAG_UPDATE_DELAYED"); env:runTimers(1)
   eq(n.bank, 2, "no scan once closed")
   noErrors(env)
+end)
+
+test("fishing: mounting before the first cast keeps the pole; after a cast it puts the weapon back", function()
+  local env = H.boot({ setup = PoleSetup, charDB = { weapons = { main = REAPER, mainLink = "|Hitem:12784|h[Arcanite Reaper]|h" } } })
+  local log = Swapper(env)
+  env.G.IsMounted = function() return true end
+  env:fire("PLAYER_MOUNT_DISPLAY_CHANGED")
+  env:runTimers(6)
+  eq(#log, 0, "riding to the water keeps the pole")
+  env.G.IsMounted = function() return false end
+  env:fire("UNIT_SPELLCAST_CHANNEL_START", "player")
+  env:fire("UNIT_SPELLCAST_CHANNEL_STOP", "player")
+  env.G.IsMounted = function() return true end
+  env:fire("PLAYER_MOUNT_DISPLAY_CHANGED")
+  noErrors(env)
+  eq(env.W.fixture.equipped[16], REAPER, "mounting after fishing puts the weapon back")
 end)

@@ -851,15 +851,11 @@ function Input.Setup(host)
   Hidden("AgentcraftKeyView", H("view"), "keyboard")
   Hidden("AgentcraftKeySearch", H("search"), "keyboard")
   for i = 1, 5 do Hidden("AgentcraftKeyPage" .. i, function() H("pageIndex")(i) end, "keyboard") end
-  -- Escape through the game menu's handler registry when the client has it.
-  -- https://github.com/Gethe/wow-ui-source/blob/live/Interface/AddOns/Blizzard_GameMenuEsc/Blizzard_GameMenuEsc.lua
-  if RegisterGameMenuEscHandler and GameMenuEscPriority and GameMenuEscPriority.AddOn then
-    local ok = pcall(RegisterGameMenuEscHandler, GameMenuEscPriority.AddOn, function()
-      if not (host:IsShown()) then return false end
-      return Esc.Pop()
-    end)
-    Input.escRegistered = ok
-  end
+  -- No RegisterGameMenuEscHandler: a handler there runs addon code inside
+  -- Blizzard's secure Escape path and tainted it ("AddOn blocked..." on
+  -- Escape, owner report 0.32.1). The window's OnKeyDown pops inner layers
+  -- (Review, pin, popups) and UISpecialFrames closes the window itself.
+  Input.escRegistered = false
   local ev = CreateFrame("Frame")
   for _, e in ipairs({ "PLAYER_REGEN_DISABLED", "PLAYER_REGEN_ENABLED", "INPUT_DEVICE_INTERFACE_TRANSITION",
                        "GAME_PAD_ACTIVE_CHANGED", "GAME_PAD_CONNECTED", "GAME_PAD_DISCONNECTED" }) do

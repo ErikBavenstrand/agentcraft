@@ -2,8 +2,14 @@
 --
 --   Keyboard: plain keybinds, no flyouts. Bar 1 = Q E R T F G C V 1 2 3 4,
 --   bar 2 = Shift + the same keys, bar 4 = Ctrl + the same keys. Bar 3, the
---   Alt bar (consumables), and the click-only side bars (Action Bars 5-8:
---   everything else you know) are filled by ActionBars.
+--   Alt bar (Fish and Bait macros, on-use trinkets, the Hearthstone), and the click-only side
+--   bars (Action Bars 5-8: everything else you know, each spell once, and
+--   the Cozy Sleeping Bag) are filled by ActionBars.
+--
+--   Bag items: only the Hearthstone, the Cozy Sleeping Bag and your equipped
+--   on-use trinkets go on any bar, on either device (owner rules, 2026-11-22;
+--   the bag is a click-only side-bar slot on the keyboard). No food, drink,
+--   potions, bandages, bombs, gadgets or elixirs.
 --
 --   Controller: built for the Gamepad UI and the Steam Deck: trigger layers,
 --   radials (spell flyouts) and back buttons. Page 3 holds Deck helpers and a
@@ -23,9 +29,13 @@
 --                                     (side bars and the controller catch-all skip it)
 --   { macro = "Arcane", "Arcane Shot" } the macro if you installed it, else the spell
 --   { macro = "FD", "Feign Death", "Disengage" } before you know Feign Death, Disengage
+--   { macro = "Bait" }                macro only: the macro once you installed it;
+--                                     until then the home waits (no spell to fall back on)
 --   { flyout = 253, "Aspect of the Hawk" } a spellbook flyout (radial on a controller)
---   { utility = 2 }                   best item for ActionBars.utility[2]
---   { item = "Hearthstone" }          that item, wherever it is in your bags
+--   { utility = 7 }                   the item for ActionBars.utility[7] (7 and 8:
+--                                     the equipped on-use trinkets)
+--   { item = "Hearthstone" }          that item, wherever it is in your bags (only
+--                                     names in ActionBars.BAG_ITEMS are placed)
 --   { racial = true }                 your race's active racial
 --   { macro = "PetCare", "Mend Pet", covers = { ... } } other spells the macro casts, so
 --                                     the controller catch-all skips them
@@ -76,7 +86,8 @@ L.keyboard = {
       { "Aspect of the Cheetah" },                  -- Shift+3
       { "Aspect of the Pack" },                     -- Shift+4
     },
-    -- [3] is the Alt bar (consumables, ActionBars.utility), not set here.
+    -- [3] is the Alt bar (Fish and Bait macros, trinkets and Hearthstone,
+    -- ActionBars.utility), not set here.
     -- Bar 4 (Ctrl): Q E R T stings and utility shots, F G C V area and beast
     -- control, 1 2 3 4 more aspects and pet care.
     [4] = {
@@ -131,7 +142,7 @@ L.controller = {
         ["none Up"] = { flyout = 253, "Aspect of the Hawk" },        -- aspects
         ["none Left"] = { flyout = "Tracking", "Track Beasts" },      -- tracking
         ["none Right"] = { "Feed Pet" },
-        ["none Down"] = { utility = 9 },   -- your best food (an item button)
+        -- none Down stays free (it held food; no consumables on bars).
         ["LT+RT A"] = { macro = "FD", "Feign Death" },
         ["LT+RT X"] = { "Frost Trap" },
         ["LT+RT B"] = { racial = true },   -- War Stomp etc.; also on back button LT+R5
@@ -141,7 +152,7 @@ L.controller = {
         ["LT+RT Left"] = { "Flare" },
         ["LT+RT Right"] = { "Wyvern Sting", "Tranquilizing Shot" },
       },
-      -- Page 2: hobbies, pet care, consumables, travel and professions.
+      -- Page 2: hobbies, pet care, trinkets, travel and professions.
       {
         title = "Utility",
         ["RT A"] = { "Revive Pet" },
@@ -152,17 +163,18 @@ L.controller = {
         ["RT Down"] = { "Beast Training" },
         ["RT Left"] = { "Eyes of the Beast" },
         ["RT Right"] = { "Tame Beast" },
-        ["LT A"] = { utility = 2 },    -- healing potion
-        ["LT X"] = { utility = 3 },    -- bandage
-        ["LT B"] = { utility = 11 },   -- utility potion
-        ["LT Y"] = { utility = 4 },    -- mana potion
-        ["LT Up"] = { utility = 1 },   -- bomb
-        ["LT Down"] = { utility = 7 }, -- on-use trinket
-        ["LT Left"] = { utility = 5 }, -- dynamite
-        ["LT Right"] = { utility = 6 }, -- gadget
-        -- No trigger, the first thing on this page: fishing and gathering.
+        -- LT: your equipped on-use trinkets, the only gear on bars (the only
+        -- bag items are the Hearthstone and the Cozy Sleeping Bag), and the
+        -- Bait macro on A (best bait you carry onto your pole; waits until
+        -- you install it). LT X B Y Left Right stay free (they held potions,
+        -- bandages, bombs and gadgets).
+        ["LT A"] = { macro = "Bait" },  -- fishing bait (Fish is on none Up)
+        ["LT Up"] = { utility = 8 },   -- on-use trinket (bottom)
+        ["LT Down"] = { utility = 7 }, -- on-use trinket (top)
+        -- No trigger, the first thing on this page: fishing, gathering and
+        -- camp (Cozy Sleeping Bag on Left, placed while it is in your bags).
         ["none Up"] = { macro = "Fish", "Fishing" },
-        ["none Left"] = { utility = 10 },  -- your best drink (an item button)
+        ["none Left"] = { item = "Cozy Sleeping Bag" }, -- camp, with Basic Campfire on Down
         ["none Right"] = { "Find Minerals", "Find Herbs" },
         ["none Down"] = { "Basic Campfire" },
         ["LT+RT A"] = { "Smelting" },

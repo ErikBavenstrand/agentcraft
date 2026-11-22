@@ -6,16 +6,26 @@
 -- Keyed bars (keys come from the Keybinds module):
 --   slot:  1 2 3 4 5 6 7 8 9 10 11 12
 --   key:   Q E R T F G C V 1 2  3  4
---   Bar 1 = key, Bar 2 = Shift+key, Bar 3 = Alt+key (utilities, all classes),
---   Bar 4 = Ctrl+key
+--   Bar 1 = key, Bar 2 = Shift+key, Bar 3 = Alt+key (all classes: the Fish
+--   and Bait macros on Alt+F/G once installed, on-use trinkets on Alt+C/V
+--   and the Hearthstone on Alt+4), Bar 4 = Ctrl+key
 -- Click-only side bars, grouped automatically from your spellbook (a spell
 -- on a keyed bar never shows here too: one home per spell):
 --   Action Bar 5 = pet spells, then other class spells not on a keyed bar
---   Action Bar 6 = tracking, then professions
+--   Action Bar 6 = tracking, then professions, then the camp items in
+--   M.SIDE_ITEMS (the Cozy Sleeping Bag), placed only while in your bags
 --   Action Bars 7-8 take what doesn't fit, class spells first.
 --   Action Bars 6-8 count only when the client has them. Without them,
---   everything shares Action Bar 5: professions, then tracking, then pet
---   utilities give up their slot before a class spell does.
+--   everything shares Action Bar 5: camp items, professions, then tracking,
+--   then pet utilities give up their slot before a class spell does.
+-- The only bag items on any bar: the Hearthstone (Alt+4) and the Cozy
+-- Sleeping Bag (side bar), plus your equipped on-use trinkets (Alt+C/V).
+--   Each spell goes on the side bars once, by name: WoW Forever knows some
+--   professions under an old and a new spell ID (Cooking 3102 and 1240956),
+--   and the side bars take the ID the spellbook lists.
+--   Apply empties every slot of a side bar it manages before filling it, and
+--   also clears a second copy of a side-bar spell (or anything it placed
+--   itself) left on an Action Bar 6-8 it no longer manages.
 -- Spells/items you don't have yet are skipped; apply again after training
 -- or when you get new items.
 local _, ns = ...
@@ -60,39 +70,27 @@ end
 -- Classes with a role layout (Layout.lua) use it instead, shared with the controller.
 M.profiles = {}
 
--- Bar 3 (Alt) for every class: items, picked from your bags/trinkets.
--- Each entry is a list of item names, best first (the first one you carry
--- is used), or a special: food / drink (best you carry), trinket1/trinket2
--- (equipped on-use trinkets).
+-- Bar 3 (Alt) for every class. The only items Agentcraft ever places are
+-- your equipped on-use trinkets, the Hearthstone and the Cozy Sleeping Bag
+-- (owner rules, 2026-11-22; the bag sits on a side bar, not here): no food,
+-- drink, potions, bandages, bombs, gadgets or elixirs, here or on the
+-- controller. An entry is a list of item names
+-- (the first one you carry is used), trinket1/trinket2 (the equipped
+-- trinket, only when it has an on-use effect) or { macro = "Fish" } (that
+-- library macro once you installed it on the Macros page; Apply never
+-- creates it, and the key waits until then). An Alt key without an entry
+-- (false) is not in the layout: Apply clears it only when Agentcraft put
+-- what it holds there, and leaves anything of yours alone.
+-- The Fishing spell itself keeps its click-only side-bar home: the Fish
+-- macro is the convenient key, and side bars never take macros.
 M.utility = {
-  -- Alt+Q: bomb
-  { "Thorium Grenade", "Dark Iron Bomb", "Hi-Explosive Bomb", "Iron Grenade",
-    "Big Iron Bomb", "Big Bronze Bomb", "Small Bronze Bomb", "Large Copper Bomb",
-    "Rough Copper Bomb" },
-  -- Alt+E: healing potion
-  { "Major Healing Potion", "Superior Healing Potion", "Greater Healing Potion",
-    "Healing Potion", "Lesser Healing Potion", "Minor Healing Potion" },
-  -- Alt+R: bandage
-  { "Heavy Runecloth Bandage", "Runecloth Bandage", "Heavy Mageweave Bandage",
-    "Mageweave Bandage", "Heavy Silk Bandage", "Silk Bandage", "Heavy Wool Bandage",
-    "Wool Bandage", "Heavy Linen Bandage", "Linen Bandage" },
-  -- Alt+T: mana potion
-  { "Major Mana Potion", "Superior Mana Potion", "Greater Mana Potion",
-    "Mana Potion", "Lesser Mana Potion", "Minor Mana Potion" },
-  -- Alt+F: dynamite
-  { "Dense Dynamite", "Solid Dynamite", "Heavy Dynamite", "Coarse Dynamite",
-    "Rough Dynamite", "EZ-Thro Dynamite II", "EZ-Thro Dynamite" },
-  -- Alt+G: engineering gadget
-  { "Gnomish Net-o-Matic Projector", "Goblin Land Mine", "Explosive Sheep",
-    "Masterwork Target Dummy", "Advanced Target Dummy", "Target Dummy",
-    "Arcane Bomb", "Goblin Rocket Boots", "Gnomish Rocket Boots" },
-  "trinket1",     -- Alt+C
-  "trinket2",     -- Alt+V
-  "food",         -- Alt+1
-  "drink",        -- Alt+2
-  { "Swiftness Potion", "Free Action Potion", "Living Action Potion",
-    "Restorative Potion", "Elixir of Fortitude" }, -- Alt+3: utility potion
-  { "Hearthstone" }, -- Alt+4
+  false, false, false, false, -- Alt+Q E R T: not in the layout
+  { macro = "Fish" },  -- Alt+F  (owner request, 2026-11-22)
+  { macro = "Bait" },  -- Alt+G  best fishing bait you carry onto the pole
+  "trinket1",          -- Alt+C
+  "trinket2",          -- Alt+V
+  false, false, false, -- Alt+1 2 3: not in the layout
+  { "Hearthstone" },   -- Alt+4
 }
 
 -- Groups for the click-only side bars.
@@ -164,6 +162,12 @@ for name in pairs(PET_SPELLS) do table.insert(SIDE_EXTRAS, name) end
 
 -- The known map plus profession spells, which live outside the class skill
 -- lines. Returns name -> ID and the set of names from your professions.
+-- One ID per name: WoW Forever lists some professions under an old and a
+-- new spell ID with the same name (Cooking 3102 / 1240956, Engineering 4038
+-- / 1240958). The first source that names a spell wins, spellbook first:
+-- the class skill lines, then the profession spellbook entries in the
+-- order C_SpellBook lists them, and only then the game's lookup by name.
+-- An ID already taken under another name is skipped too.
 local function SideKnown(known)
   local ids, have, prof = {}, {}, {}
   for name, id in pairs(known) do ids[name] = id; have[id] = true end
@@ -197,10 +201,10 @@ end
 local GetItemInfoCompat = (C_Item and C_Item.GetItemInfo) or GetItemInfo
 
 local function ItemInfo(id)
-  local name, _, _, _, minLevel = GetItemInfoCompat(id)
+  local name = GetItemInfoCompat(id)
   -- GetItemInfo returns nothing for items not cached yet; the name lookup still works.
   if not name and C_Item and C_Item.GetItemNameByID then name = C_Item.GetItemNameByID(id) end
-  return name, minLevel or 0
+  return name
 end
 
 local function ItemSpell(id)
@@ -208,9 +212,20 @@ local function ItemSpell(id)
   return GetItemSpell(id)
 end
 
--- Every distinct item in your bags: { [name] = id }, plus a list.
+-- Bag items Agentcraft may place, by name (the trinkets come from your
+-- equipment, not your bags). Anything else in a utility list, a layout
+-- { item = } entry or M.SIDE_ITEMS is never placed.
+M.BAG_ITEMS = { ["Hearthstone"] = true, ["Cozy Sleeping Bag"] = true }
+
+-- Bag items with a click-only home on the side bars (owner request,
+-- 2026-11-22: the WoW Forever camp item), after the professions on Action
+-- Bar 6. Each is placed only while it is in your bags (waiting otherwise),
+-- and skipped when a keyed bar or the Alt bar names it: one home per device.
+M.SIDE_ITEMS = { "Cozy Sleeping Bag" }
+
+-- Every distinct item in your bags: { [name] = id }.
 local function BagItems()
-  local byName, list = {}, {}
+  local byName = {}
   local numSlots = C_Container and C_Container.GetContainerNumSlots or GetContainerNumSlots
   local itemID = C_Container and C_Container.GetContainerItemID or GetContainerItemID
   for bag = 0, 4 do
@@ -218,90 +233,45 @@ local function BagItems()
       local id = itemID(bag, slot)
       if id then
         local name = ItemInfo(id)
-        if name and not byName[name] then
-          byName[name] = id
-          table.insert(list, id)
-        end
+        if name and not byName[name] then byName[name] = id end
       end
     end
   end
-  return byName, list
+  return byName
 end
 
--- "Food", "Drink", "Both" or nil. The item's spell name says so on some
--- clients; WoW Forever doesn't report it, so fall back to the tooltip text.
-local function ConsumableKind(id)
-  local spell = ItemSpell(id)
-  if spell == "Food" or spell == "Drink" then return spell end
-  if spell == "Refreshment" then return "Both" end
-  if C_TooltipInfo and C_TooltipInfo.GetItemByID then
-    local ok, data = pcall(C_TooltipInfo.GetItemByID, id)
-    if ok and data and data.lines then
-      for _, l in ipairs(data.lines) do
-        local t = type(l.leftText) == "string" and l.leftText:lower() or ""
-        if t:find("while eating and drinking") then return "Both" end
-        if t:find("while eating") then return "Food" end
-        if t:find("while drinking") then return "Drink" end
-      end
-    end
-  end
-end
-
--- Best food/drink you carry: highest required level you can use.
-local function BestConsumable(list, kind)
-  local best, bestLevel
-  local level = UnitLevel("player")
-  for _, id in ipairs(list) do
-    local k = ConsumableKind(id)
-    if k == kind or k == "Both" then
-      local _, minLevel = ItemInfo(id)
-      if minLevel <= level and (not bestLevel or minLevel > bestLevel) then
-        best, bestLevel = id, minLevel
-      end
-    end
-  end
-  return best
-end
-
-local function ResolveUtility(entry, bags, list)
-  if entry == "food" then return BestConsumable(list, "Food") end
-  if entry == "drink" then return BestConsumable(list, "Drink") end
+local function ResolveUtility(entry, bags)
   if entry == "trinket1" or entry == "trinket2" then
     local id = GetInventoryItemID("player", entry == "trinket1" and 13 or 14)
     if id and ItemSpell(id) then return id end -- only on-use trinkets
     return nil
   end
+  if type(entry) ~= "table" or entry.macro then return nil end -- a macro entry is no item
   for _, name in ipairs(entry) do
-    if bags[name] then return bags[name] end
+    if M.BAG_ITEMS[name] and bags[name] then return bags[name] end
   end
 end
 
 -- For other modules (Controller): item ID for a utility entry, or nil.
 function M.ResolveUtilityItem(entry)
-  local bags, list = BagItems()
-  return ResolveUtility(entry, bags, list)
-end
-
--- For other modules: name of the best "Food" or "Drink" in your bags, or nil.
-function M.BestConsumableName(kind)
-  local _, list = BagItems()
-  local id = BestConsumable(list, kind)
-  return id and ItemInfo(id) or nil
+  return ResolveUtility(entry, BagItems())
 end
 
 -- For other modules: known spell name -> highest-rank spell ID.
 function M.KnownSpellIDs() return KnownSpells() end
 
--- For other modules: "Food", "Drink", "Both" or nil for an item ID.
-M.ConsumableKind = ConsumableKind
+-- For other modules (the controller): known spells plus your profession
+-- spells, one ID per name, the spellbook's ID first (see SideKnown).
+function M.SideSpellIDs() return (SideKnown(KnownSpells())) end
 
 -- Display name of a utility entry nobody carries yet (display only).
-local SPECIAL_LABEL = { food = "Best food you carry", drink = "Best drink you carry",
-  trinket1 = "On-use trinket (top)", trinket2 = "On-use trinket (bottom)" }
+local SPECIAL_LABEL = { trinket1 = "On-use trinket (top)", trinket2 = "On-use trinket (bottom)" }
 local function UtilityLabel(entry)
   if type(entry) == "string" then return SPECIAL_LABEL[entry] or entry end
+  if entry.macro then return entry.macro end
   return entry[#entry]  -- the weakest item; its state line says a better one counts too
 end
+M.UtilityLabel = UtilityLabel
 
 -- Placement ----------------------------------------------------------------
 
@@ -350,6 +320,35 @@ local function ResolveEntry(entry, known)
   return { missing = entry[#entry] or "?" }
 end
 
+-- An Alt-bar macro entry ({ macro = "Fish" }): the macro's name, else nil.
+local function AltMacro(entry) return type(entry) == "table" and entry.macro or nil end
+
+-- Resolves an Alt-bar macro entry: { kind = "macro", name } once the macro
+-- is installed, else { missing, macro, reason = "install" }. Never creates it.
+local function ResolveAltMacro(entry)
+  local C = ns.modules.controller
+  if C and C.Resolve then return C.Resolve({ macro = entry.macro }, {}) end
+  local i = GetMacroIndexByName(entry.macro)
+  if i and i > 0 then return { kind = "macro", name = entry.macro, installed = true } end
+  return { missing = entry.macro .. " macro", macro = entry.macro, reason = "install" }
+end
+
+-- Puts an installed macro on a slot, by name (macro indexes shift).
+local function PlaceMacro(slot, item)
+  local C = ns.modules.controller
+  if C and C.Place then return C.Place(slot, item) end
+  local i = GetMacroIndexByName(item.name)
+  if i and i > 0 then PickupMacro(i); if GetCursorInfo() then PlaceAction(slot) end end
+  ClearCursor()
+end
+
+-- "Waiting · install Fish on the Macros page", as the Controller page says it.
+local function InstallText(name)
+  local C = ns.modules.controller
+  if C and C.InstallText then return C.InstallText(name) end
+  return "Waiting · install " .. tostring(name) .. " on the Macros page"
+end
+
 -- Slots Apply and Undo manage: bars 1-5, plus the given Action Bars 6-8.
 local function ManagedSlots(extra)
   local slots = {}
@@ -389,11 +388,81 @@ local function SavedExtraBars()
   return list
 end
 
+-- What a slot holds, as Apply records it in M.charDB.placed: "spell:883".
+local function SlotKey(slot)
+  local t, id = GetActionInfo(slot)
+  if t then return t .. ":" .. tostring(id) end
+end
+
+local function InAltBar(slot) return slot > BAR_OFFSET[3] and slot <= BAR_OFFSET[3] + 12 end
+
+-- Whether Agentcraft put what a slot holds there. Apply records every slot
+-- it fills (M.charDB.placed). Bars applied before that record existed
+-- count an item on the Alt bar as ours, since the old Alt bar held only
+-- items Apply picked from your bags, unless it is the item your own bars
+-- had there before the first Apply.
+local function PlacedByUs(slot)
+  local key = SlotKey(slot)
+  if not key then return false end
+  local rec = M.charDB.placed
+  if rec then return rec[slot] == key end
+  local backup = M.charDB.backup
+  if not backup or not InAltBar(slot) then return false end
+  local t, id = GetActionInfo(slot)
+  if t ~= "item" then return false end
+  local saved = backup[slot]
+  return not (saved and saved[1] == "item" and saved[2] == id)
+end
+
+-- An Alt key the layout leaves out (no utility entry) that holds something
+-- of yours: Apply leaves it alone. One holding what Agentcraft placed is
+-- cleared instead (the old consumables).
+local function AltFree(slot, entry)
+  return InAltBar(slot) and not entry and GetActionInfo(slot) ~= nil and not PlacedByUs(slot)
+end
+
+local function SpellNameOf(id)
+  if C_Spell and C_Spell.GetSpellName then return C_Spell.GetSpellName(id) end
+  local info = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(id)
+  return info and info.name
+end
+
+-- Stale copies on an Action Bar 6-8 that Apply doesn't manage this time
+-- (an older layout put tracking and professions there): a spell whose name
+-- the plan puts on a side bar, by name so an old profession ID counts, or
+-- anything Apply placed there itself. Returns { { slot =, name = } }.
+local function StaleSlots(side, extra, used)
+  local names = {}
+  for _, n in ipairs(side) do names[n] = true end
+  for _, list in pairs(extra) do
+    for _, n in pairs(list) do names[n] = true end
+  end
+  local managed = {}
+  for _, b in ipairs(used) do managed[b.first] = true end
+  local out = {}
+  for _, b in ipairs(EXTRA_BARS) do
+    if not managed[b.first] then
+      for i = 1, 12 do
+        local slot = b.first + i
+        local t, id = GetActionInfo(slot)
+        local name = t == "spell" and SpellNameOf(id) or nil
+        if (name and names[name]) or PlacedByUs(slot) then
+          local d = not name and ns.UI and ns.UI.DescribeSlot and ns.UI.DescribeSlot(slot)
+          out[#out + 1] = { slot = slot, name = name or (d and d.name) or tostring(t) }
+        end
+      end
+    end
+  end
+  return out
+end
+
 -- Learned spells not on a keyed bar, split over the side bars. Returns side
 -- (Action Bar 5's list), the name -> spell ID map the lists draw from, extra
--- (one 12-slot list per available Action Bar 6-8: tracking and professions
--- on Action Bar 6, overflow on 7-8), dropped (names that fit nowhere) and
--- the available extra bars.
+-- (one 12-slot list per available Action Bar 6-8: tracking, professions and
+-- camp items on Action Bar 6, overflow on 7-8), dropped (names that fit
+-- nowhere), the available extra bars, and items: the side-bar names that
+-- are bag items (M.SIDE_ITEMS), name -> item ID, or false while the item is
+-- not in your bags (a waiting slot; nothing is placed there).
 local function SideBars(profile, known)
   local used = {}
   for _, bar in ipairs(LAYOUT_BARS) do
@@ -428,8 +497,30 @@ local function SideBars(profile, known)
   table.sort(other)
   table.sort(tracking)
   table.sort(prof, function(a, b) return ProfRank(a) < ProfRank(b) or (ProfRank(a) == ProfRank(b) and a < b) end)
-  -- More spells than slots: the least needed give up their slot first
-  -- (professions, then tracking, then pet utilities), never a class spell.
+  -- Camp items follow the professions, so they give up their slot first.
+  -- One home per device: an item a keyed bar or the Alt bar names is skipped.
+  local onKeys = {}
+  for _, bar in ipairs(LAYOUT_BARS) do
+    for _, entry in pairs(profile[bar] or {}) do
+      if type(entry) == "table" and entry.item then onKeys[entry.item] = true end
+    end
+  end
+  for _, entry in pairs(profile[3] or M.utility) do
+    if type(entry) == "table" then
+      for _, n in ipairs(entry) do onKeys[n] = true end
+    end
+  end
+  local items, bags = {}, nil
+  for _, name in ipairs(M.SIDE_ITEMS) do
+    if M.BAG_ITEMS[name] and not onKeys[name] and not ids[name] then
+      bags = bags or BagItems()
+      items[name] = bags[name] or false
+      table.insert(prof, name)
+    end
+  end
+  -- More entries than slots: the least needed give up their slot first
+  -- (camp items, professions, then tracking, then pet utilities), never a
+  -- class spell.
   local extraBars = ExtraBars()
   local room = 12 + 12 * #extraBars
   local dropped = {}
@@ -449,7 +540,7 @@ local function SideBars(profile, known)
     -- Only Action Bar 5: tracking and professions follow the class spells
     -- (the drops above made it all fit).
     for _, n in ipairs(right2) do table.insert(right, n) end
-    return right, ids, extra, dropped, extraBars
+    return right, ids, extra, dropped, extraBars, items
   end
   -- Spill extras from one side bar into free room on the other.
   while #right > 12 and #right2 < 12 do table.insert(right2, table.remove(right)) end
@@ -465,7 +556,17 @@ local function SideBars(profile, known)
     extra[b] = {}
     for i = 1, 12 do extra[b][i] = rest[(b - 2) * 12 + i] end
   end
-  return right, ids, extra, dropped, extraBars
+  return right, ids, extra, dropped, extraBars, items
+end
+
+-- Places a side-bar name: a spell, or a camp item while it is in your bags.
+local function PlaceSide(slot, name, ids, items)
+  local item = items[name]
+  if item ~= nil then
+    if item then PlaceItem(slot, item) end
+  elseif ids[name] then
+    PlaceSpell(slot, ids[name])
+  end
 end
 
 -- Spellbook index of a flyout, by flyout ID (for undo).
@@ -533,15 +634,26 @@ local function Apply()
   local profile, class = Profile()
   if not profile then return ns.Print("no profile for " .. class .. " yet.") end
   local known = KnownSpells()
-  local bags, bagList = BagItems()
-  local side, ids, extra, dropped, extraBars = SideBars(profile, known)
+  local bags = BagItems()
+  local side, ids, extra, dropped, extraBars, items = SideBars(profile, known)
   local used = UsedExtraBars(extra, extraBars)
   local slots = ManagedSlots(used)
+  local utility = profile[3] or M.utility
+  -- Before the backup and the record change: what is ours is decided on
+  -- the bars as they are now.
+  local stale = StaleSlots(side, extra, used)
+  local free = {}
+  for i = 1, 12 do
+    local slot = BAR_OFFSET[3] + i
+    if AltFree(slot, utility[i]) then free[slot] = true end
+  end
 
   -- Keep the very first backup, so undo always returns to the bars from
   -- before the first apply. An Action Bar 6-8 joins the backup the first
-  -- time Apply manages it (backup.extra lists the ones it covers). Slots
-  -- holding something undo can't put back are left alone.
+  -- time Apply manages it (backup.extra lists the ones it covers); a stale
+  -- copy cleared from a bar Apply doesn't manage joins it on its own
+  -- (backup.loose). Slots holding something undo can't put back, and Alt
+  -- keys outside the layout that hold your own things, are left alone.
   local first = not M.charDB.backup
   local backup = M.charDB.backup or {}
   local covered = backup.extra or {}
@@ -549,9 +661,20 @@ local function Apply()
   for _, slot in ipairs(slots) do
     local t, id = GetActionInfo(slot)
     if t and not Restorable(t) then keep[slot] = true; kept = kept + 1 end
+    if free[slot] then keep[slot] = true end
     local bar = ExtraBarOf(slot)
     if t and (first or (bar and not covered[bar])) then
       backup[slot] = { t, id, t == "macro" and GetActionText(slot) or nil }
+    end
+  end
+  for _, s in ipairs(stale) do
+    if not covered[ExtraBarOf(s.slot)] then
+      backup.loose = backup.loose or {}
+      if not backup.loose[s.slot] then
+        local t, id = GetActionInfo(s.slot)
+        backup[s.slot] = { t, id, t == "macro" and GetActionText(s.slot) or nil }
+        backup.loose[s.slot] = true
+      end
     end
   end
   local extraUsed = {}
@@ -565,6 +688,7 @@ local function Apply()
   for _, slot in ipairs(slots) do
     if not keep[slot] then ClearSlot(slot) end
   end
+  for _, s in ipairs(stale) do ClearSlot(s.slot) end
 
   local missing = {}
   local C = ns.modules.controller
@@ -581,24 +705,42 @@ local function Apply()
     end
   end
 
-  local utility = profile[3] or M.utility
   for i = 1, 12 do
     local entry = utility[i]
     if entry and not keep[BAR_OFFSET[3] + i] then
-      local id = ResolveUtility(entry, bags, bagList)
-      if id then PlaceItem(BAR_OFFSET[3] + i, id) end
+      if AltMacro(entry) then
+        -- Only an installed macro goes on; a missing one leaves the key empty.
+        local item = ResolveAltMacro(entry)
+        if item.missing then table.insert(missing, item.missing) else PlaceMacro(BAR_OFFSET[3] + i, item) end
+      else
+        local id = ResolveUtility(entry, bags)
+        if id then PlaceItem(BAR_OFFSET[3] + i, id) end
+      end
     end
   end
 
   for i, name in ipairs(side) do
-    if not keep[SIDE_BAR + i] then PlaceSpell(SIDE_BAR + i, ids[name]) end
+    if not keep[SIDE_BAR + i] then PlaceSide(SIDE_BAR + i, name, ids, items) end
   end
   local hidden = {}
   for b, bar in ipairs(extraBars) do
     for i, name in pairs(extra[b] or {}) do
-      if not keep[bar.first + i] then PlaceSpell(bar.first + i, ids[name]) end
+      if not keep[bar.first + i] then PlaceSide(bar.first + i, name, ids, items) end
     end
     if next(extra[b] or {}) and ExtraBarHidden(bar) then hidden[#hidden + 1] = bar.label end
+  end
+
+  -- Record what Apply placed, so the next Apply knows which slots are ours.
+  local placed = {}
+  for _, slot in ipairs(slots) do
+    if not keep[slot] then placed[slot] = SlotKey(slot) end
+  end
+  M.charDB.placed = placed
+
+  if #stale > 0 then
+    local names = {}
+    for i, s in ipairs(stale) do names[i] = s.name end
+    ns.Print("cleared old copies from bars Agentcraft no longer fills: " .. table.concat(names, ", ") .. ".")
   end
   if #dropped > 0 then ns.Print("side bars full; these stay in the spellbook: " .. table.concat(dropped, ", ") .. ".") end
   if #hidden > 0 then ns.Print(table.concat(hidden, ", ") .. " hidden: turn on in Edit Mode to click those spells.") end
@@ -623,7 +765,14 @@ local function Undo()
   if not backup then return ns.Print("nothing to undo.") end
   ClearCursor()
   local lost = {}
-  for _, slot in ipairs(ManagedSlots(SavedExtraBars())) do
+  local slots = ManagedSlots(SavedExtraBars())
+  local listed = {}
+  for _, slot in ipairs(slots) do listed[slot] = true end
+  -- Stale copies Apply cleared from bars it doesn't manage go back too.
+  for slot in pairs(backup.loose or {}) do
+    if not listed[slot] then slots[#slots + 1] = slot end
+  end
+  for _, slot in ipairs(slots) do
     local saved = backup[slot]
     local cur = GetActionInfo(slot)
     -- Apply left slots it can't restore alone; so does undo.
@@ -639,6 +788,7 @@ local function Undo()
   end
   M.charDB.backup = nil
   M.charDB.extraBars = nil
+  M.charDB.placed = nil
   ns.Print("bars restored.")
   if #lost > 0 then ns.Print("couldn't put back: " .. table.concat(lost, ", ") .. ".") end
 end
@@ -650,7 +800,7 @@ local function Show()
   local profile, class = Profile()
   if not profile then return ns.Print("no profile for " .. class .. " yet.") end
   local known = KnownSpells()
-  local bags, bagList = BagItems()
+  local bags = BagItems()
   for _, bar in ipairs(LAYOUT_BARS) do
     local mod = BAR_MOD[bar]
     print("|cffffd100Bar " .. bar .. (mod and (" (" .. mod .. ")") or "") .. "|r")
@@ -663,22 +813,36 @@ local function Show()
       end
     end
   end
-  print("|cffffd100Bar 3 (Alt, utilities)|r")
+  print("|cffffd100Bar 3 (Alt, fishing macros, trinkets and Hearthstone)|r")
   local utility = profile[3] or M.utility
   for i = 1, 12 do
     local entry = utility[i]
-    if entry then
-      local id = ResolveUtility(entry, bags, bagList)
-      local what = id and (ItemInfo(id)) or ("|cff888888" .. UtilityLabel(entry) .. " (none in bags)|r")
+    if AltMacro(entry) then
+      local item = ResolveAltMacro(entry)
+      local what = item.missing and ("|cff888888" .. entry.macro .. " macro (install it on the Macros page)|r")
+        or (entry.macro .. " macro")
+      print("  Alt+" .. KEY_LABELS[i] .. " -> " .. what)
+    elseif entry then
+      local id = ResolveUtility(entry, bags)
+      local none = type(entry) == "string" and " (none equipped)" or " (none in bags)"
+      local what = id and (ItemInfo(id)) or ("|cff888888" .. UtilityLabel(entry) .. none .. "|r")
       print("  Alt+" .. KEY_LABELS[i] .. " -> " .. what)
     end
   end
-  local side, _, extra, dropped, extraBars = SideBars(profile, known)
-  print("|cffffd100Action Bar 5 (click: pet, other" .. (#extraBars == 0 and ", tracking, professions" or "") .. ")|r  " .. table.concat(side, ", "))
+  local side, _, extra, dropped, extraBars, items = SideBars(profile, known)
+  -- A camp item you don't carry shows greyed, like a utility item.
+  local function Names(list)
+    local out = {}
+    for i = 1, 12 do
+      local n = list[i]
+      if n then out[#out + 1] = items[n] == false and ("|cff888888" .. n .. " (none in bags)|r") or n end
+    end
+    return out
+  end
+  print("|cffffd100Action Bar 5 (click: pet, other" .. (#extraBars == 0 and ", tracking, professions, camp" or "") .. ")|r  " .. table.concat(Names(side), ", "))
   for b, bar in ipairs(extraBars) do
-    local names = {}
-    for i = 1, 12 do if extra[b][i] then names[#names + 1] = extra[b][i] end end
-    local what = b == 1 and "click: tracking, professions" or "click"
+    local names = Names(extra[b])
+    local what = b == 1 and "click: tracking, professions, camp" or "click"
     if #names > 0 then print("|cffffd100" .. bar.label .. " (" .. what .. ")|r  " .. table.concat(names, ", ")) end
   end
   if #dropped > 0 then print("|cff888888No room (stay in the spellbook):|r  " .. table.concat(dropped, ", ")) end
@@ -690,7 +854,10 @@ end
 -- Entry states: same (already there), new (placed on apply), missing (spell
 -- not learned / item not in bags; e.clears when Apply empties a slot that
 -- holds something now), clear (removed on apply), kept (holds something
--- Undo can't restore, so Apply leaves it alone), empty.
+-- Undo can't restore, so Apply leaves it alone), free (an Alt key outside
+-- the layout holding something of yours: Apply leaves it alone), empty.
+-- plan.stale lists the old copies Apply clears from Action Bars 6-8 it
+-- doesn't manage ({ slot =, name = }); each counts as a change.
 -- label/sub are display only (Edit Mode names; sub = the key modifier).
 local ROWS = {
   { label = "Action Bar 1", sub = nil,     command = "ACTIONBUTTON",          first = BAR_OFFSET[1] },
@@ -707,12 +874,13 @@ function M.Plan()
   local profile, class = Profile()
   if not profile then return nil, class end
   local known = KnownSpells()
-  local bags, bagList = BagItems()
-  local side, ids, extra, dropped, extraBars = SideBars(profile, known)
+  local bags = BagItems()
+  local side, ids, extra, dropped, extraBars, items = SideBars(profile, known)
   local used = UsedExtraBars(extra, extraBars)
   local utility = profile[3] or M.utility
-  local plan = { changes = 0, spellsMissing = 0, itemsMissing = 0, macrosMissing = 0, kept = 0,
-    dropped = dropped, rows = {}, hidden = {} }
+  local stale = StaleSlots(side, extra, used)
+  local plan = { changes = #stale, spellsMissing = 0, itemsMissing = 0, macrosMissing = 0, kept = 0,
+    dropped = dropped, rows = {}, hidden = {}, stale = stale }
   local extraOf = {}
   for b, bar in ipairs(extraBars) do extraOf[bar.first] = extra[b] end
   for r, row in ipairs(ROWS) do plan.rows[r] = row end
@@ -746,18 +914,34 @@ function M.Plan()
         end
       elseif r == 3 then
         local entry = utility[i]
-        if entry then
+        if AltMacro(entry) then
+          -- { macro = "Fish" }: the macro once installed; waiting until then
+          -- (kind stays "macro", so it counts as a macro to install).
+          local item = ResolveAltMacro(entry)
+          e.item, e.kind, e.macro = item, "macro", entry.macro
+          e.id = not item.missing and item.name or nil
+          e.name = item.name or item.missing
+        elseif entry then
           e.cands = type(entry) == "table" and entry or nil
-          local id = ResolveUtility(entry, bags, bagList)
+          local id = ResolveUtility(entry, bags)
           e.kind, e.id, e.name = "item", id, id and ItemInfo(id) or UtilityLabel(entry)
+          e.trinket = type(entry) == "string" or nil -- display only: "none equipped"
+        elseif AltFree(e.slot, entry) then
+          e.free = true
         end
       else
         local name = (row.extra or side)[i]
-        if name then e.kind, e.id, e.name = "spell", ids[name], name end
+        if name and items[name] ~= nil then
+          -- A camp item: waiting ("missing") while it is not in your bags.
+          e.kind, e.id, e.name, e.cands = "item", items[name] or nil, name, { name }
+        elseif name then
+          e.kind, e.id, e.name = "spell", ids[name], name
+        end
       end
       local cur, curID = GetActionInfo(e.slot)
       local C = ns.modules.controller
       if cur and not Restorable(cur) then e.state = "kept"; plan.kept = plan.kept + 1
+      elseif e.free then e.state = "free"
       elseif not e.kind then e.state = cur and "clear" or "empty"
       elseif not e.id then e.state = "missing"; e.clears = cur ~= nil
       elseif e.item and C and C.Same then e.state = C.Same(e.slot, e.item) and "same" or "new"
@@ -912,9 +1096,9 @@ local function AfterOfEntry(e)
   elseif st == "missing" then
     return { icon = WaitingIcon(e), name = e.name or "?", state = "waiting",
       kind = e.kind, clears = e.clears }
-  elseif st == "kept" then
+  elseif st == "kept" or st == "free" then
     local d = UI.DescribeSlot(e.slot)
-    return { icon = d.icon, name = d.name, state = "kept", tip = d.tip }
+    return { icon = d.icon, name = d.name, state = st, tip = d.tip }
   elseif st == "clear" then
     return { name = "Empty", state = "clear" }
   end
@@ -1007,12 +1191,14 @@ local function StateText(c)
   if c.flyout then return "Radials belong on the Controller page", UI.C.MISSING end
   if a.state == "waiting" then
     local e = c.entry
-    if e and e.kind == "macro" then return "Waiting: install " .. (e.item and e.item.macro or a.name) .. " in Macros", UI.C.MISSING end
-    if e and e.kind == "item" then return "Waiting: none in your bags (or a better one)", UI.C.MISSING end
+    if e and e.kind == "macro" then return InstallText(e.item and e.item.macro or e.macro or a.name), UI.C.MISSING end
+    if e and e.trinket then return "Waiting: equip a trinket with a Use effect", UI.C.MISSING end
+    if e and e.kind == "item" then return "Waiting: none in your bags", UI.C.MISSING end
     return "Waiting: learn " .. a.name, UI.C.MISSING
   end
   if a.state == "clear" then return "Cleared when you apply", UI.C.REMOVED end
   if a.state == "kept" then return "Kept: Apply leaves this slot alone", UI.C.GRAY end
+  if a.state == "free" then return "Not in the layout: Apply leaves your own button here", UI.C.GRAY end
   if c.bindState == "replaces" then return "Replaces your bind when you apply", UI.C.REPLACES end
   if c.changed then return "Added when you apply", UI.C.ADDED end
   return "In place", UI.C.GREEN
@@ -1247,6 +1433,7 @@ local function InspectSide(pane, page, e, slot)
   local text, color = "In place", UI.C.GREEN
   if st == "new" then text, color = "Placed when you apply", UI.C.ADDED
   elseif st == "clear" then text, color = "Cleared when you apply", UI.C.REMOVED
+  elseif st == "missing" and e.kind == "item" then text, color = "Waiting: none in your bags", UI.C.MISSING
   elseif st == "missing" then text, color = "Waiting: learn " .. (e.name or "?"), UI.C.MISSING
   elseif st == "kept" then text, color = "Kept: Apply leaves this slot alone", UI.C.GRAY
   elseif st == "empty" then text, color = "Empty", UI.C.DISABLED end
@@ -1256,7 +1443,7 @@ local function InspectSide(pane, page, e, slot)
     pane:Diff({ icon = now.icon, name = now.name }, { icon = v.icon, name = v.name, color = st == "new" and UI.C.ADDED or UI.C.REMOVED })
   end
   pane:Text(SpellText(v))
-  pane:Text("Side bars hold the spells without a key: pet spells, other class spells, tracking and professions. Click them on screen.", UI.C.GRAY)
+  pane:Text("Side bars hold the spells without a key: pet spells, other class spells, tracking, professions and the Cozy Sleeping Bag (while it is in your bags). Click them on screen.", UI.C.GRAY)
   local refs = ControllerRefs(page, v)
   if #refs > 0 then pane:Section("Also on"); pane:CrossRef(refs) end
   if slot then pane:CrossRef({ ModeLink(page, nil, nil, slot) }) end
@@ -1647,7 +1834,7 @@ local function FillSide(page)
   local notes = {}
   if not plan then notes[#notes + 1] = "No keyboard layout for " .. (UnitClass("player") or "your class") .. " yet."
   else
-    notes[#notes + 1] = "Side bars hold the spells without a key: pet spells, other class spells, tracking and professions."
+    notes[#notes + 1] = "Side bars hold the spells without a key: pet spells, other class spells, tracking, professions and the Cozy Sleeping Bag (while it is in your bags)."
     if #plan.dropped > 0 then notes[#notes + 1] = "No room (they stay in the spellbook): " .. table.concat(plan.dropped, ", ") .. "." end
   end
   page.sideHint:SetText(table.concat(notes, "\n"))
@@ -1934,6 +2121,12 @@ local function Groups(page)
         end
       end
     end
+    -- Old copies on Action Bars 6-8 that Apply no longer fills.
+    for _, s in ipairs(d.plan.stale or {}) do
+      local now = UI.DescribeSlot(s.slot)
+      clear[#clear + 1] = { key = (SlotText(s.slot):gsub(" · button ", " · ")), nowIcon = now.icon,
+        nowName = now.name, afterName = "Empty", color = UI.C.REMOVED, note = "old copy; it has a home on the side bars" }
+    end
   end
   if d.kb then
     for _, b in ipairs(d.layout) do
@@ -2129,6 +2322,7 @@ ns.RegisterPage({
       if plan.macrosMissing > 0 then miss[#miss + 1] = Plural(plan.macrosMissing, "macro", "macros") .. " to install" end
       if #miss > 0 then tip[#tip + 1] = "Waiting: " .. table.concat(miss, " · ") end
       if plan.kept > 0 then tip[#tip + 1] = Plural(plan.kept, "slot", "slots") .. " kept: Apply leaves them alone, since Restore can't put back what they hold." end
+      if #(plan.stale or {}) > 0 then tip[#tip + 1] = Plural(#plan.stale, "old copy", "old copies") .. " on Action Bars 6-8 cleared: each spell has one home." end
       if #plan.dropped > 0 then tip[#tip + 1] = "No room on the side bars: " .. table.concat(plan.dropped, ", ") .. "." end
       for _, label in ipairs(plan.hidden) do tip[#tip + 1] = label .. " is hidden. Turn it on in Edit Mode." end
     else
@@ -2145,7 +2339,8 @@ ns.RegisterPage({
       for _, base in ipairs(grp.keys) do
         for l = 1, #LAYERS do
           local c = Cell(p, base, l)
-          if c.managed and not c.waiting and c.after.state ~= "empty" and c.after.state ~= "unbound" then
+          if c.managed and not c.waiting and c.after.state ~= "empty" and c.after.state ~= "unbound"
+            and c.after.state ~= "free" then
             total = total + 1
             if not c.changed then done = done + 1 end
           end
@@ -2207,7 +2402,7 @@ ns.RegisterPage({
       pane:Row("Waiting to learn", tostring(waiting), waiting > 0 and UI.C.MISSING or nil)
     end
     pane:Section("How it works")
-    pane:Text("The same 12 keys work on every bar: plain is Action Bar 1, Shift is Action Bar 2, Ctrl is Action Bar 4 and Alt is Action Bar 3 (your best consumables). Spells without a key sit on the side bars, Action Bars 5-8. Pet abilities sit on Z and X, pet commands on the mouse buttons.")
+    pane:Text("The same 12 keys work on every bar: plain is Action Bar 1, Shift is Action Bar 2, Ctrl is Action Bar 4 and Alt is Action Bar 3 (the Fish and Bait macros on Alt+F and Alt+G once you install them on the Macros page, on-use trinkets on Alt+C and Alt+V, the Hearthstone on Alt+4). Spells without a key sit on the side bars, Action Bars 5-8, each once, with the Cozy Sleeping Bag after the professions; nothing else from your bags goes on a bar. Pet abilities sit on Z and X, pet commands on the mouse buttons.")
     pane:Text("Move to a key to see all four layers. " .. PadName("PAD1") .. " or Enter pins it here.", UI.C.GRAY)
     pane:Buttons(RestoreButtons())
   end,

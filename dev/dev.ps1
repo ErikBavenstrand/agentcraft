@@ -519,6 +519,7 @@ function Test-Macro($m, $items) {
         if ($cmd -eq '/equipslot') { $tg = ($target -replace '^\d+\s*', '') }
         if ($tg -match '^\d+(\s+\d+)?$') { Add-Finding INFO macro-slot $where "$label $cmd $tg uses an inventory slot, not an item name (allowed)" }
         elseif ($m.Name -eq 'Fish' -and $cmd -eq '/equip') { $fishItems.Add($tg) }
+        elseif ($m.Name -eq 'Bait' -and $cmd -eq '/use') { $fishItems.Add($tg) }
         else { Add-Finding ERROR macro-item $where "$label $cmd $tg names an item; items go on bars as item buttons" }
       }
     }
@@ -535,7 +536,7 @@ function Test-Macro($m, $items) {
       if ($rest -match $MenuRun) { Add-Finding ERROR macro-menu $where "$label /run does what a game menu already does ($($Matches[0]))" }
     }
   }
-  if ($fishItems.Count -gt 0) { Add-Finding INFO macro-item $where "$label /equip names $($fishItems.Count) items: $($fishItems -join ', ') (Fish exception approved by the owner)" }
+  if ($fishItems.Count -gt 0) { Add-Finding INFO macro-item $where "$label names $($fishItems.Count) fishing items: $($fishItems -join ', ') (Fish / Bait exception approved by the owner)" }
   if ($m.Untested) { Add-Finding INFO macro-untested $where "$label is marked untested (needs an in-game confirmation)" }
 }
 

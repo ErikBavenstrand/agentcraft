@@ -54,6 +54,11 @@ The ground truth is an in-game capture (`/ac capture`, see dev/README.md).
 21. [lint R13] Hover shows only the highlight and the tooltip. It never moves the focus and never changes the Inspector; a click (or a key/pad move) does.
     The page tabs never touch the Inspector at all (`acNoInspect`).
 
+## Taint
+
+22. [lint R14] Never call ShowUIPanel, HideUIPanel or RegisterGameMenuEscHandler from addon code: they run or mark addon code inside Blizzard's secure panel and Escape paths, and the next Escape fails with "AddOn blocked from an action only available to the Blizzard UI" (owner report, 0.32.1).
+    Open and close with frame:Show() / frame:Hide(); list the window in UISpecialFrames so Escape closes it; pop inner layers in the window's own OnKeyDown.
+
 ## Sources
 
 - Blizzard_UIPanels_Game/Camelot/CharacterFrame.lua and .xml (open/close sounds, no animations)

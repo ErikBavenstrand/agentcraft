@@ -95,6 +95,9 @@ function Env:slotText(slot)
   if a.type == "macro" then local m = wow.MacroAt(self.W, a.id) return "macro:" .. tostring(m and m.name) end
   if a.type == "spell" then
     for _, s in ipairs(self.W.fixture.spells or {}) do if s.id == a.id then return "spell:" .. s.name end end
+    for _, p in ipairs(self.W.fixture.professions or {}) do
+      for _, s in ipairs(p.spells or {}) do if s.id == a.id then return "spell:" .. s.name end end
+    end
   end
   return a.type .. ":" .. tostring(a.id)
 end

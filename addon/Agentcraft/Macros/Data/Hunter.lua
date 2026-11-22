@@ -116,3 +116,38 @@ L.Add({ name = "Recall", category = "pet", class = "HUNTER", order = 40, perChar
   iconFile = "Ability_Hunter_BeastCall",
   desc = "Calls your pet back to you.",
   body = "/petfollow" })
+
+-- Utility (owner asked for utility macros, 2026-11-22). Sources:
+-- Blizzard forums "Hunter macros (Classic)" us.forums.blizzard.com/en/wow/t/hunter-macros-classic/306698,
+-- RankedBoost WoW Forever hunter macros, warcraft.wiki.gg Macro_conditionals
+-- and MACRO_castsequence. "!" recasts an aspect without toggling it off.
+
+L.Add({ name = "Travel", category = "utility", class = "HUNTER", order = 80, perCharacter = true, tags = { "travel", "controller" },
+  icon = "Aspect of the Cheetah", requires = { "Aspect of the Cheetah" }, untested = true,
+  desc = "Speed aspect: Aspect of the Pack in a group once you know it, else Aspect of the Cheetah. Pressing again never turns it off.",
+  body = "#showtooltip\n/cast [group,known:Aspect of the Pack] !Aspect of the Pack; !Aspect of the Cheetah" })
+
+L.Add({ name = "Fight", category = "utility", class = "HUNTER", order = 81, perCharacter = true, tags = { "travel", "controller" },
+  icon = "Aspect of the Hawk", requires = { "Aspect of the Monkey" }, untested = true,
+  desc = "Back to fighting: dismounts and swaps the speed aspect for Aspect of the Hawk (Monkey before you learn Hawk).",
+  body = "#showtooltip\n/dismount [mounted]\n/cast [known:Aspect of the Hawk] !Aspect of the Hawk; !Aspect of the Monkey" })
+
+L.Add({ name = "NoSpeed", category = "utility", class = "HUNTER", order = 82, perCharacter = true, tags = { "travel", "defensive" },
+  icon = "Aspect of the Cheetah", requires = { "Aspect of the Cheetah" },
+  desc = "Drops Cheetah or Pack at once, with no global cooldown, so a hit doesn't daze you.",
+  body = "/cancelaura Aspect of the Cheetah\n/cancelaura Aspect of the Pack" })
+
+L.Add({ name = "TrackCycle", category = "utility", class = "HUNTER", order = 83, perCharacter = true, tags = { "tracking", "controller" },
+  icon = "Track Beasts", requires = { "Track Beasts", "Track Humanoids", "Track Undead", "Track Hidden" }, untested = true,
+  desc = "Each press switches to the next tracking: Beasts, Humanoids, Undead, Hidden. Needs all four (level 24).",
+  body = "#showtooltip\n/castsequence Track Beasts, Track Humanoids, Track Undead, Track Hidden" })
+
+L.Add({ name = "Lore", category = "pet", class = "HUNTER", order = 84, perCharacter = true, tags = { "pet" },
+  icon = "Beast Lore", requires = { "Beast Lore" }, untested = true,
+  desc = "Beast Lore on your target, or on your own pet when you have no target.",
+  body = "#showtooltip Beast Lore\n/cast [@target,exists,nodead][@pet,exists] Beast Lore" })
+
+L.Add({ name = "Eyes", category = "pet", class = "HUNTER", order = 85, perCharacter = true, tags = { "pet", "controller" },
+  icon = "Eyes of the Beast", requires = { "Eyes of the Beast" }, untested = true,
+  desc = "One button into and out of Eyes of the Beast.",
+  body = "#showtooltip Eyes of the Beast\n/stopcasting [channeling:Eyes of the Beast]\n/cast [nochanneling,@pet,exists,nodead] Eyes of the Beast" })

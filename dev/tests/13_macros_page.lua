@@ -189,6 +189,9 @@ end
 
 test("macros: End from card 12 onto the short last page keeps focus on a shown card and selects it", function()
   local env, page = Boot()
+  -- The fixture's professions add profession macros to For You; without
+  -- them the book has a different length, so one of the two ends short.
+  if #page.shown % 12 == 0 then env, page = Boot({ setup = function(W) W.fixture.professions = nil end }) end
   local Focus = env.ns.Focus
   ok(#page.shown % 12 ~= 0 and #page.shown % 12 < 12, "the last page is short: " .. #page.shown)
   Key(env, "TAB")

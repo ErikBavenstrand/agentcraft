@@ -22,7 +22,12 @@ M.RULES = {
   R11 = { id = "round-layout", sev = "ERROR" },
   R12 = { id = "opaque-highlight", sev = "ERROR" },
   R13 = { id = "hover-focus", sev = "ERROR" },
+  R14 = { id = "taint-secure-ui", sev = "ERROR" },
 }
+
+-- Blizzard functions that taint secure UI code when an addon calls them
+-- (owner report 0.32.1: Escape blocked after ShowUIPanel / the Esc registry).
+local TAINTING = { ShowUIPanel = true, HideUIPanel = true, RegisterGameMenuEscHandler = true }
 
 -- Tokenizer ----------------------------------------------------------------------------
 
@@ -628,6 +633,16 @@ function M.LintSource(src, rel, ctx)
     end
     if not found and not Suppressed(comments, 1) then
       add("R11", 1, "UI/Window.lua never calls SetRoundLayoutToNearestPixel / PixelUtil.SetRoundLayoutToNearestPixelRecursively on the window root (ui-rules 5)")
+    end
+  end
+
+  -- R14: calls that taint Blizzard's secure UI (code lines: comments and
+  -- strings are blanked, so a comment naming them is fine).
+  for l, text in ipairs(lines) do
+    for name in pairs(TAINTING) do
+      if text:find("%f[%w_]" .. name .. "%f[^%w_]") and not Suppressed(comments, l) then
+        add("R14", l, name .. " from addon code taints Blizzard's secure UI (Escape then fails with 'AddOn blocked'); use frame:Show()/Hide() and UISpecialFrames (ui-rules 22)")
+      end
     end
   end
 

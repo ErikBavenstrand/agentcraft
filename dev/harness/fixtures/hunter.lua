@@ -60,6 +60,23 @@ return {
     { name = "Basic Campfire", id = 818, icon = 135805 },
   },
 
+  -- Professions (GetProfessions / GetProfessionInfo): their spells sit in the
+  -- spellbook outside the class skill line. WoW Forever lists some under an
+  -- old and a new spell ID with the same name: Engineering twice here, and
+  -- Cooking again (1240956) though the class line already has it (18260).
+  professions = {
+    { name = "Engineering", icon = 136243, spells = {
+      { name = "Engineering", id = 4036, icon = 136243 },
+      { name = "Engineering", id = 1240958, icon = 136243 },
+    } },
+    { name = "Cooking", icon = 133971, spells = {
+      { name = "Cooking", id = 1240956, icon = 133971 },
+    } },
+    { name = "Fishing", icon = 136245, spells = {
+      { name = "Bait and Tackle", id = 1278067, icon = 136245 },
+    } },
+  },
+
   -- Spellbook flyouts. Aspects are a flyout on the modern client.
   flyouts = {
     { id = 253, name = "Aspects", spells = {
@@ -89,6 +106,12 @@ return {
     [6256] = { name = "Fishing Pole", classID = 2, subClassID = 20, equipLoc = "INVTYPE_2HWEAPON", icon = 132932 },
     [18738] = { name = "Carapace Spine Crossbow", classID = 2, subClassID = 18, equipLoc = "INVTYPE_RANGED", icon = 135533 },
     [12784] = { name = "Arcanite Reaper", classID = 2, subClassID = 1, equipLoc = "INVTYPE_2HWEAPON", icon = 132400 },
+    -- Trinkets: one with a Use effect (placed on Alt+C), one without (never placed).
+    [11122] = { name = "Carrot on a Stick", spell = "Increased Mount Speed", equipLoc = "INVTYPE_TRINKET", icon = 134010 },
+    [13209] = { name = "Seal of the Dawn", equipLoc = "INVTYPE_TRINKET", icon = 133440 },
+    -- WoW Forever camp item. 248000 is a fixture ID, not the real one; tests
+    -- put it in the bags (setup) when they need it there.
+    [248000] = { name = "Cozy Sleeping Bag", spell = "Cozy Sleeping Bag" },
   },
 
   -- bags[bag][slot] = itemID; size defaults to 16 for a listed bag.
@@ -96,8 +119,8 @@ return {
     [0] = { 6948, 8952, 8766, 13446, 14530, 6256 },
   },
 
-  -- equipped[inventorySlot] = itemID (16 main hand, 17 off hand, 18 ranged)
-  equipped = { [16] = 12784, [18] = 18738 },
+  -- equipped[inventorySlot] = itemID (13/14 trinkets, 16 main hand, 17 off hand, 18 ranged)
+  equipped = { [13] = 11122, [14] = 13209, [16] = 12784, [18] = 18738 },
 
   -- Used when boot({ pet = true }).
   petData = {

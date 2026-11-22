@@ -838,12 +838,12 @@ function UI.ResetPosition()
   if frame then RestorePosition(); ApplyScale() end
 end
 
-local function ShowWindow()
-  if not InCombatLockdown() and ShowUIPanel then ShowUIPanel(frame) else frame:Show() end
-end
-local function HideWindow()
-  if not InCombatLockdown() and HideUIPanel then HideUIPanel(frame) else frame:Hide() end
-end
+-- Plain Show/Hide, never ShowUIPanel/HideUIPanel: from addon code those
+-- taint Blizzard's panel manager, and the next Escape then failed with
+-- "AddOn blocked from an action only available to the Blizzard UI"
+-- (owner report, 0.32.1). Escape closes the window through UISpecialFrames.
+local function ShowWindow() frame:Show() end
+local function HideWindow() frame:Hide() end
 
 -- Combat ------------------------------------------------------------------------------------
 
@@ -1272,7 +1272,7 @@ local function Build()
   local template = UI.Has("PortraitFrameTemplate") and "PortraitFrameTemplate"
     or (UI.Has("ButtonFrameTemplate") and "ButtonFrameTemplate" or "BasicFrameTemplateWithInset")
   frame = CreateFrame("Frame", "AgentcraftFrame", UIParent, template)
-  frame:Hide() -- shown through ShowUIPanel, so the Gamepad UI registers it
+  frame:Hide()
   frame:SetSize(W, H)
   -- Round the root's layout to whole physical pixels (dev/ui-rules.md rule 5);
   -- UI.PixelSnap at the end of Build does every child the same way.

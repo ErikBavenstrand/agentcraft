@@ -127,3 +127,10 @@ test("uilint: R13 hover never moves the focus or fills the Inspector", function(
   eq(Ids('w:HookScript("OnEnter", function(self)\n  pane:Inspect(self)\nend)'), "R13@1")
   eq(Ids('w:HookScript("OnEnter", function(self) self:acTip() end)\nw:HookScript("OnMouseDown", function(self) ns.Focus:Set(self, "click") end)'), "")
 end)
+
+test("uilint: R14 no calls that taint Blizzard's secure UI", function()
+  eq(Ids('ShowUIPanel(frame)\nHideUIPanel(frame)'), "R14@1 R14@2")
+  eq(Ids('pcall(RegisterGameMenuEscHandler, 1, fn)'), "R14@1", "a pcall still runs it")
+  eq(Ids('RegisterGameMenuEscHandler(1, fn)'), "R14@1")
+  eq(Ids('-- never ShowUIPanel(frame)\nframe:Show()'), "")
+end)

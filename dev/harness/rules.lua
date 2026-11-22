@@ -85,7 +85,7 @@ function R.CheckMacro(m, body, items)
           -- A bare number ("13") or "bag slot" ("0 1") is a slot, not an item name.
           local isSlot = tg:match("^%d+$") or tg:match("^%d+%s+%d+$")
           if not isSlot then
-            if m.name == "Fish" and cmd == "/equip" then fishItems[#fishItems + 1] = tg
+            if (m.name == "Fish" and cmd == "/equip") or (m.name == "Bait" and cmd == "/use") then fishItems[#fishItems + 1] = tg
             else Add("error", "macro-item", cmd .. " " .. tg .. " names an item") end
           end
         end
@@ -103,7 +103,7 @@ function R.CheckMacro(m, body, items)
       end
     end
   end
-  if #fishItems > 0 then Add("info", "macro-item", "/equip names " .. #fishItems .. " items (Fish exception approved by the owner)") end
+  if #fishItems > 0 then Add("info", "macro-item", "names " .. #fishItems .. " fishing items (Fish / Bait exception approved by the owner)") end
   if m.untested then Add("info", "macro-untested", "marked untested") end
   return out
 end

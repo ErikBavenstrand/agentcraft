@@ -41,7 +41,8 @@ test("controller HUD: four bars on three rows, no slot overlaps, every slot and 
       local slot = page.bars[layer].slots[n]
       local r = s:Rect(slot)
       ok(Inside(r, stage), "bar " .. layer .. " " .. n .. " inside the stage")
-      ok(slot.glyph:IsShown(), "bar " .. layer .. " " .. n .. " shows its glyph")
+      -- An empty slot names its button with the empty art instead of the glyph.
+      ok(slot.glyph:IsShown() or slot.empty:IsShown(), "bar " .. layer .. " " .. n .. " shows its glyph")
       ok(Inside(s:Rect(slot.glyph), stage), "bar " .. layer .. " " .. n .. " glyph inside the stage")
       rects[#rects + 1] = { r = r, slot = slot, name = layer .. ":" .. n }
     end

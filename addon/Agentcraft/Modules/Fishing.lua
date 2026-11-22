@@ -2,7 +2,8 @@
 -- fishes; it never names your weapons).
 --   * Remembers the weapons you wear (item link, so the right copy of a
 --     random-suffix or enchanted weapon comes back). With the pole equipped,
---     15 seconds after your last cast ends (out of combat, alive, not
+--     15 seconds after your last cast ends (2 minutes if you haven't cast
+--     yet; mounting counts only after a cast) (out of combat, alive, not
 --     channelling, no loot window) or as soon as you mount, puts them back.
 --     Keeps trying until both hands are filled, and gives up after a few
 --     tries or when the weapon is no longer in your bags. Turn it off with
@@ -25,6 +26,11 @@ local ticker
 local lureOn -- nil until we've seen the pole, then true/false
 local tries = 0
 local restoring -- { [16] = { id, link }, [17] = ... } once putting back has begun
+-- Whether a cast started since the pole went on. Until then the helper
+-- waits much longer and ignores mounting: equipping the pole and riding to
+-- the water must not take it off again (the "pole won't equip" report).
+local fished = false
+local BEFORE_FIRST_CAST = 120
 
 local function IsPole(id) return ns.MacroLibrary and ns.MacroLibrary.IsPole(id) end
 local function PoleEquipped() return IsPole(GetInventoryItemID("player", 16)) end
@@ -138,6 +144,7 @@ end
 
 local function StopTicker()
   if ticker then ticker:Cancel(); ticker = nil end
+  fished = false
   restoring = nil
 end
 
@@ -163,8 +170,9 @@ local function RestoreIfIdle()
   if InCombatLockdown() or (G.UnitIsDeadOrGhost and G.UnitIsDeadOrGhost("player")) then return end
   if UnitChannelInfo("player") or (LootFrame and LootFrame:IsShown()) then return end
   if not restoring then
-    local leaving = IsMounted and IsMounted()
-    if not leaving and GetTime() - lastCast < (M.charDB.idleSeconds or 15) then return end
+    local leaving = fished and IsMounted and IsMounted()
+    local grace = fished and (M.charDB.idleSeconds or 15) or BEFORE_FIRST_CAST
+    if not leaving and GetTime() - lastCast < grace then return end
     local w, why = Remembered()
     if not w then return GiveUp(why) end
     restoring = { [16] = { id = w.main, link = w.mainLink } }
@@ -217,7 +225,7 @@ M.events = {
   PLAYER_MOUNT_DISPLAY_CHANGED = function() if PoleEquipped() then RestoreIfIdle() end end,
   UNIT_SPELLCAST_CHANNEL_START = function(_, unit)
     -- Fishing again: wait for the next idle period before putting weapons back.
-    if unit == "player" and PoleEquipped() then restoring = nil; Watch() end
+    if unit == "player" and PoleEquipped() then fished = true; restoring = nil; Watch() end
   end,
   UNIT_SPELLCAST_CHANNEL_STOP = function(_, unit)
     if unit == "player" and PoleEquipped() then Touch() end

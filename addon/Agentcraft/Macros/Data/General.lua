@@ -20,8 +20,18 @@ local L = ns.MacroLibrary
 
 L.Add({ name = "Fish", category = "fishing", profession = "Fishing", order = 10, icon = "Fishing",
   tags = { "controller", "gear" }, untested = true,
-  desc = "One button fishing: equips your best pole if you aren't holding one, otherwise fishes. The Fishing module puts your weapons back when you stop fishing or mount (/ac off Fishing to do it yourself).",
-  body = "#showtooltip Fishing\n/cast [equipped:Fishing Poles] Fishing\n/stopmacro [equipped:Fishing Poles]\n/equip Fishing Pole\n/equip Strong Fishing Pole\n/equip Darkwood Fishing Pole\n/equip Big Iron Fishing Pole\n/equip Seth's Graphite Fishing Pole" })
+  desc = "One button fishing: the first press equips your best pole, the next presses fish. The Fishing module puts your weapons back 15 s after you stop fishing, or when you mount after fishing (/ac off Fishing to do it yourself).",
+  body = "#showtooltip Fishing\n/cast [equipped:{POLETYPE}] Fishing\n/stopmacro [equipped:{POLETYPE}]\n/equip Fishing Pole\n/equip Strong Fishing Pole\n/equip Darkwood Fishing Pole\n/equip Big Iron Fishing Pole\n/equip Seth's Graphite Fishing Pole" })
+
+-- Bait names its baits (owner request, 2026-11-22: the second approved
+-- item exception, like Fish's poles). Worst first: each /use of a bait you
+-- carry starts the apply-to-weapon cursor and the next one you carry
+-- replaces it, so the best bait you have ends on the cursor and /use 16
+-- puts it on the pole in your main hand.
+L.Add({ name = "Bait", category = "fishing", profession = "Fishing", order = 11,
+  iconFile = "INV_Misc_Orb_03", tags = { "controller", "gear" }, untested = true,
+  desc = "Puts the best fishing bait you carry on your pole: Aquadynamic Fish Attractor, Bright Baubles, Nightcrawlers or Shiny Bauble. Equip the pole first (press Fish).",
+  body = "#showtooltip\n/use Shiny Bauble\n/use Nightcrawlers\n/use Bright Baubles\n/use Aquadynamic Fish Attractor\n/use 16" })
 
 -- Utility ----------------------------------------------------------------------
 
@@ -45,8 +55,10 @@ L.Add({ name = "Reload", category = "utility", tags = { "interface", "controller
   desc = "Reloads the interface. Saves Agentcraft's snapshot and loads addon changes; the game menu has no reload.",
   body = "/reload" })
 
--- Older Fish text (0.25): [equipped:] takes the plural subtype, so it never fished.
+-- Older Fish texts: neither "Fishing Pole" (0.25) nor "Fishing Poles" (0.26-0.32)
+-- matched on WoW Forever; the body now reads the subtype from the client ({POLETYPE}).
 L.previous.Fish = {
+  "#showtooltip Fishing\n/cast [equipped:Fishing Poles] Fishing\n/stopmacro [equipped:Fishing Poles]\n/equip Fishing Pole\n/equip Strong Fishing Pole\n/equip Darkwood Fishing Pole\n/equip Big Iron Fishing Pole\n/equip Seth's Graphite Fishing Pole",
   "#showtooltip Fishing\n/cast [equipped:Fishing Pole] Fishing\n/stopmacro [equipped:Fishing Pole]\n/equip Fishing Pole\n/equip Strong Fishing Pole\n/equip Darkwood Fishing Pole\n/equip Big Iron Fishing Pole\n/equip Seth's Graphite Fishing Pole",
 }
 
@@ -139,3 +151,13 @@ L.retiredShapes = {
     return L.Wrote("Feed", b) and b:find("/cast Feed Pet", 1, true) and OnlyLines(b, { "#showtooltip", "/cast Feed Pet", "/use " }) or false
   end,
 }
+
+-- More utility (2026-11-22). Sources: warcraft.wiki.gg API_C_MountJournal.SummonByID
+-- (lists Forever 1.60.1) and API_GetInventoryItemCount (ammo slot).
+L.Add({ name = "Mount", category = "utility", order = 45, tags = { "travel", "controller" }, iconFile = "Ability_Mount_Kodo_01", untested = true,
+  desc = "Summons a random favourite mount for the area, or dismounts. Mark favourites in the mount journal.",
+  body = "#showtooltip\n/run if IsMounted() then Dismount() else C_MountJournal.SummonByID(0) end" })
+
+L.Add({ name = "Ammo", category = "utility", class = "HUNTER", order = 46, tags = { "interface" }, iconFile = "INV_Ammo_Arrow_02", untested = true,
+  desc = "Prints how much of your equipped ammo you have left.",
+  body = "/run local s=GetInventorySlotInfo(\"AmmoSlot\") print(\"Ammo:\",GetInventoryItemCount(\"player\",s))" })

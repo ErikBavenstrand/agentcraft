@@ -157,11 +157,24 @@ end
 
 local function Spells(W) return W.fixture.spells or {} end
 
+-- Profession spells (fixture.professions[i].spells): spellbook items outside
+-- the class skill lines, reached through GetProfessions / GetProfessionInfo,
+-- as in the client. A profession may list the same name under two IDs.
+local function ProfessionSpells(W)
+  local out = {}
+  for _, p in ipairs(W.fixture.professions or {}) do
+    for _, s in ipairs(p.spells or {}) do out[#out + 1] = s end
+  end
+  return out
+end
+
 local function SpellByName(W, name)
   for _, s in ipairs(Spells(W)) do if s.name == name then return s end end
+  for _, s in ipairs(ProfessionSpells(W)) do if s.name == name then return s end end
 end
 local function SpellByID(W, id)
   for _, s in ipairs(Spells(W)) do if s.id == id then return s end end
+  for _, s in ipairs(ProfessionSpells(W)) do if s.id == id then return s end end
   for _, f in ipairs(W.fixture.flyouts or {}) do
     for _, s in ipairs(f.spells or {}) do if s.id == id then return s end end
   end
@@ -173,7 +186,8 @@ local function CatalogSpell(W, key)
   end
 end
 
--- Spellbook items: spells, then flyouts.
+-- Spellbook items: spells, then flyouts (the class skill line, W._bookClass
+-- items), then each profession's spells (W._profOffset[i] = its offset).
 local function BookItems(W)
   if W._book then return W._book end
   local book = {}
@@ -185,6 +199,15 @@ local function BookItems(W)
   end
   for _, f in ipairs(W.fixture.flyouts or {}) do
     book[#book + 1] = { name = f.name, actionID = f.id, itemType = 4, iconID = f.icon or 136243, isPassive = false }
+  end
+  W._bookClass = #book
+  W._profOffset = {}
+  for i, p in ipairs(W.fixture.professions or {}) do
+    W._profOffset[i] = #book
+    for _, s in ipairs(p.spells or {}) do
+      book[#book + 1] = { name = s.name, spellID = s.id, actionID = s.id, isPassive = s.passive or false,
+        itemType = 1, iconID = s.icon or 136243 }
+    end
   end
   W._book = book
   return book
@@ -343,7 +366,22 @@ function M.api(W, toc)
   A.IsMounted = function() return false end
   A.GetInventoryItemID = function(unit, slot) if unit == "player" then return (fx.equipped or {})[slot] end end
   A.GetWeaponEnchantInfo = function() return false end
-  A.GetProfessions = function() return nil end
+  -- Indices into fixture.professions, one per listed profession (the client
+  -- returns prof1, prof2, archaeology, fishing, cooking, first aid).
+  A.GetProfessions = function()
+    local p = fx.professions or {}
+    if #p == 0 then return nil end
+    local idx = {}
+    for i = 1, #p do idx[i] = i end
+    return unpack(idx, 1, #p)
+  end
+  -- name, icon, skillLevel, maxSkillLevel, numSpells, spellOffset
+  A.GetProfessionInfo = function(i)
+    local p = (fx.professions or {})[i]
+    if not p then return nil end
+    BookItems(W)
+    return p.name, p.icon or 136243, p.rank or 150, p.maxRank or 300, #(p.spells or {}), W._profOffset[i]
+  end
 
   -- Combat values: plain numbers, or secrets while W.secret is set.
   local function S(...)
@@ -413,7 +451,7 @@ function M.api(W, toc)
   A.C_SpellBook = Lenient(W, "C_SpellBook", {
     GetNumSpellBookSkillLines = function() return 1 end,
     GetSpellBookSkillLineInfo = function(tab)
-      if tab == 1 then return { name = "General", itemIndexOffset = 0, numSpellBookItems = #BookItems(W) } end
+      if tab == 1 then return { name = "General", itemIndexOffset = 0, numSpellBookItems = (BookItems(W) and W._bookClass) } end
     end,
     GetSpellBookItemInfo = function(i, bank)
       if bank == 1 then

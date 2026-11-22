@@ -21,7 +21,10 @@
 -- "Auto <ability>" macros only once you've installed them.
 -- A back button with no home in the layout is unbound by Apply.
 -- Plan items that can't be placed carry `missing` (a label) and `reason`:
--- "learn", "carry", "install", "nomacro", "nohome" or "notpaddle".
+-- "learn", "carry", "equip", "install", "nomacro", "nohome" or "notpaddle".
+-- Items: only the Hearthstone, the Cozy Sleeping Bag (set 2, no trigger +
+-- D-pad left) and your equipped on-use trinkets are ever placed (owner
+-- rules, 2026-11-22); no food, drink, potions or gadgets.
 local _, ns = ...
 local UI = ns.UI
 local M = ns.RegisterModule("Controller", {
@@ -46,7 +49,10 @@ end
 --   { "Feign Death", "Disengage" }   first spell you know
 --   { flyout = 253 }                 spellbook flyout (a radial), by flyout ID or name
 --   { macro = "Fish", "Fishing" }    an installed library macro (never installed for you), else the spell
---   { utility = <ActionBars.utility entry> }  best matching item in your bags
+--   { macro = "Bait" }               macro only: the installed macro, else the home waits
+--   { utility = <ActionBars.utility index> }  that entry's item: an equipped on-use
+--                                    trinket (7, 8) or the Hearthstone (12)
+--   { item = "Hearthstone" }         that bag item, if ActionBars.BAG_ITEMS allows it
 --   { racial = true }                your race's active racial
 local RACIALS = { "War Stomp", "Berserking", "Blood Fury", "Will of the Forsaken", "Stoneform",
   "Shadowmeld", "Escape Artist", "Perception" }
@@ -62,6 +68,7 @@ end
 
 local function Util() return GamepadActionBarBindingUtil end
 local KnownID -- defined below
+local LibraryIcon -- defined below
 
 -- The class layout lives in Layout.lua, shared with the keyboard bars.
 local function Layout()
@@ -73,8 +80,11 @@ local function Layout()
   return { pages = pages, paddles = paddles }, class
 end
 
+-- Known spells by name, profession spells included, one ID per name: the
+-- one the spellbook lists (WoW Forever knows Cooking as 3102 and 1240956).
 local function Known()
   local AB = ns.modules.actionbars
+  if AB and AB.SideSpellIDs then return AB.SideSpellIDs() end
   return AB and AB.KnownSpellIDs and AB.KnownSpellIDs() or {}
 end
 
@@ -190,10 +200,12 @@ function M.Resolve(entry, known, used)
     local plain = needs or (entry.covers and entry.covers[1])
     local id = plain and KnownID(plain, known)
     if id then return { kind = "spell", id = id, name = plain } end
-    return { missing = entry.macro .. " macro", macro = entry.macro, reason = "install" }
+    -- A macro-only home ({ macro = "Bait" }) waits, showing the macro's icon.
+    return { missing = entry.macro .. " macro", macro = entry.macro, reason = "install", icon = LibraryIcon(entry.macro) }
   end
   if entry.item then
-    -- { item = "Hearthstone" }: that item, wherever it sits in your bags.
+    -- { item = "Hearthstone" }, { item = "Cozy Sleeping Bag" }: that item,
+    -- wherever it sits in your bags (only names in ActionBars.BAG_ITEMS).
     local AB = ns.modules.actionbars
     local id = AB and AB.ResolveUtilityItem({ entry.item })
     if id then return { kind = "item", id = id, name = entry.item } end
@@ -204,7 +216,8 @@ function M.Resolve(entry, known, used)
     local spec = AB and AB.utility and AB.utility[entry.utility]
     local id = spec and AB.ResolveUtilityItem(spec)
     if id then return { kind = "item", id = id, name = C_Item.GetItemNameByID(id) or ("item " .. id) } end
-    return { missing = type(spec) == "table" and spec[#spec] or tostring(spec), reason = "carry" }
+    local label = spec and AB.UtilityLabel and AB.UtilityLabel(spec) or tostring(spec)
+    return { missing = label, reason = type(spec) == "string" and "equip" or "carry" }
   end
   for _, n in ipairs(entry) do
     local id = KnownID(n, known)
@@ -247,7 +260,7 @@ local function LibrarySpell(name)
   end
 end
 
-local function LibraryIcon(name)
+function LibraryIcon(name)
   local L = ns.MacroLibrary
   for _, m in ipairs(L and L.macros or {}) do
     if m.name == name then
@@ -298,9 +311,11 @@ end
 local OVERFLOW_SKIP = { ["Attack"] = true, ["Auto Attack"] = true, ["Auto Shot"] = true, ["Shoot"] = true, ["Throw"] = true, ["Cultivation"] = true }
 
 -- Known spells with no controller home (and not inside a placed flyout),
--- alphabetically, for the { overflow = true } buttons.
+-- alphabetically, for the { overflow = true } buttons. A spell counts as
+-- placed by ID and by name, so a profession the client knows under two IDs
+-- (Cooking 3102 and 1240956) never gets a second button.
 local function OverflowSpells(pages, known)
-  local placed = {}
+  local placed, placedName = {}, {}
   for _, def in ipairs(pages) do
     -- Same order and per-page `used` as M.Plan, so both pick the same
     -- alternative from a list home.
@@ -309,7 +324,7 @@ local function OverflowSpells(pages, known)
       local entry = def[key]
       if not entry.overflow and not entry.petauto then
         local item = M.Resolve(entry, known, used)
-        if item.kind == "spell" then placed[item.id] = true; used[item.id] = true end
+        if item.kind == "spell" then placed[item.id] = true; used[item.id] = true; placedName[item.name] = true end
         if item.kind == "flyout" and GetFlyoutInfo then
           local _, _, numSlots = GetFlyoutInfo(item.id)
           for s = 1, numSlots or 0 do
@@ -318,6 +333,7 @@ local function OverflowSpells(pages, known)
             local spellID, overrideID, _, spellName = GetFlyoutSlotInfo(item.id, s)
             if spellID then placed[spellID] = true end
             if overrideID then placed[overrideID] = true end
+            if spellName then placedName[spellName] = true end
             if spellName and known[spellName] then placed[known[spellName]] = true end
           end
         end
@@ -325,7 +341,7 @@ local function OverflowSpells(pages, known)
         if entry.upgrade then
           for _, n in ipairs(entry) do
             local id = KnownID(n, known)
-            if id then placed[id] = true end
+            if id then placed[id] = true; placedName[n] = true end
           end
         end
         -- A macro version counts as placing its spell, and covers = { ... }
@@ -335,7 +351,7 @@ local function OverflowSpells(pages, known)
           for _, n in ipairs(entry.covers or {}) do names[#names + 1] = n end
           for _, n in ipairs(names) do
             local id = KnownID(n, known)
-            if id then placed[id] = true end
+            if id then placed[id] = true; placedName[n] = true end
           end
         end
       end
@@ -343,7 +359,7 @@ local function OverflowSpells(pages, known)
   end
   local list = {}
   for name, id in pairs(known) do
-    if not placed[id] and not OVERFLOW_SKIP[name] then list[#list + 1] = { name = name, id = id } end
+    if not placed[id] and not placedName[name] and not OVERFLOW_SKIP[name] then list[#list + 1] = { name = name, id = id } end
   end
   table.sort(list, function(a, b) return a.name < b.name end)
   return list
@@ -665,6 +681,7 @@ local FIXED_ICON = { [5] = "Interface\\Cursor\\Interact", [6] = "Interface\\Curs
 local REASON = {
   learn = "Not learned yet. Added when you train it and apply again.",
   carry = "None in your bags. Added when you carry one and apply again.",
+  equip = "No trinket with a Use effect equipped. Added when you equip one and apply again.",
   install = "Macro not installed. Install it on the Macros page, then apply again.",
   nomacro = "No autocast macro for this ability in the Macro Library yet.",
   notpaddle = "Back buttons are plain key bindings: they can't open a radial or toggle autocast.",
@@ -672,9 +689,14 @@ local REASON = {
 local function ReasonText(item) return REASON[item.reason] or REASON.learn end
 M.ReasonText = ReasonText
 
-local WAITING = { learn = "Waiting · learn it first", carry = "Waiting · carry one", install = "Waiting · install its macro",
+local WAITING = { learn = "Waiting · learn it first", carry = "Waiting · carry one",
+  equip = "Waiting · equip an on-use trinket", install = "Waiting · install its macro",
   nomacro = "Waiting · no autocast macro yet", notpaddle = "Can't go on a back button" }
 local KIND = { spell = "Spell", item = "Item", macro = "Macro", flyout = "Radial" }
+
+-- "Waiting · install Bait on the Macros page": a macro home whose macro you
+-- haven't installed. The Keyboard page uses the same words.
+function M.InstallText(name) return "Waiting · install " .. tostring(name) .. " on the Macros page" end
 
 local function TabLabel(i, title) return i .. " · " .. (title or "Empty") end
 
@@ -814,6 +836,7 @@ local function Describe(plan, set, slotID)
     else
       d.state, d.slotState = "waiting", "missing"
       d.stateText = WAITING[item.reason] or WAITING.learn
+      if item.reason == "install" and item.macro then d.stateText = M.InstallText(item.macro) end
     end
     return d
   end
@@ -886,7 +909,7 @@ local SHORT = {
   ["Distracting Shot"] = "Distract", ["Eyes of the Beast"] = "Eyes", ["Hunter's Mark"] = "Mark", ["Raptor Strike"] = "Raptor",
   ["Serpent Sting"] = "Serpent", ["Viper Sting"] = "Viper", ["Scorpid Sting"] = "Scorpid",
   ["Cancel / Back"] = "Back", ["Hearthstone"] = "Hearth", ["Find Minerals"] = "Minerals", ["Find Herbs"] = "Herbs",
-  ["Find Treasure"] = "Treasure", ["Engineering"] = "Engineer",
+  ["Find Treasure"] = "Treasure", ["Engineering"] = "Engineer", ["Cozy Sleeping Bag"] = "Sleeping Bag",
 }
 -- Focused or held bars keep their size (the section glow and dimming of the
 -- other bars mark them): the rows are packed too close to grow, and slots
@@ -1931,6 +1954,7 @@ ns.RegisterPage({
     local lt, rt = PadName("PADLTRIGGER"), PadName("PADRTRIGGER")
     pane:Text(string.format("Hold %s, %s or both (Shift, Ctrl on the keyboard) to see that bar. Pet radials (%s + %s, %s + %s) are filled by the Gamepad UI itself.",
       lt, rt, PadName("PADLSHOULDER"), lt, PadName("PADRSHOULDER"), rt), UI.C.GRAY)
+    pane:Text("Items on the controller: the Hearthstone, the Cozy Sleeping Bag and your on-use trinkets, each placed once you carry or equip it. Nothing else from your bags.", UI.C.GRAY)
   end,
 
   actions = {
