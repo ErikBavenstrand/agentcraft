@@ -51,9 +51,15 @@ return {
   [136095] = "interface\\icons\\spell_nature_spiritwolf",
   [136192] = "interface\\icons\\spell_shadow_sealofkings",
   [136245] = "interface\\icons\\trade_fishing",  -- added by render -Fetch
+  [136248] = "interface\\icons\\trade_mining",  -- added by hand (Mining)
+  [136025] = "interface\\icons\\spell_nature_earthquake",  -- added by hand (Find Minerals)
+  [135811] = "interface\\icons\\spell_fire_flameblades",  -- added by hand (Smelting)
+  [136246] = "interface\\icons\\trade_herbalism",  -- added by hand (Herbalism)
+  [136240] = "interface\\icons\\trade_alchemy",  -- added by hand (Alchemy)
   [135813] = "interface\\icons\\spell_fire_flameshock",  -- added by render -Fetch
   [132400] = "interface\\icons\\inv_axe_09",
   [133682] = "interface\\icons\\inv_misc_bandage_12",
   [134414] = "interface\\icons\\inv_misc_rune_01",
   [134834] = "interface\\icons\\inv_potion_54",  -- added by render -Fetch
+  [134010] = "interface\\icons\\inv_misc_food_54",  -- added by render -Fetch
 }

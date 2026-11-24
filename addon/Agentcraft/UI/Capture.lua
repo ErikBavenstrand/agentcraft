@@ -703,6 +703,49 @@ local function Shoot(st, rec)
   end)
 end
 
+-- Bar paging, so stance pages can be checked in game: the bonus bar offset
+-- (both the 12.0 C_ActionBar name and the old global), the bonus bar index,
+-- the shapeshift form, the spec the layouts use, and what Bar 1 (slots
+-- 1-12) and each bonus bar (offset 1-4: slots 73-84, 85-96, 97-108,
+-- 109-120) hold, one "type:id" per slot ("-" empty). bonusIndexForSlot asks
+-- the client which bonus bar slots 73, 85, 97 and 109 belong to.
+function DC.BarPaging()
+  local out = {}
+  local function Try(label, fn, ...)
+    if type(fn) ~= "function" then return end
+    local ok, v = pcall(fn, ...)
+    out[label] = ok and Str(v) or ("error: " .. Str(v))
+  end
+  local AB = C_ActionBar
+  Try("C_ActionBar.GetBonusBarOffset", AB and AB.GetBonusBarOffset)
+  Try("GetBonusBarOffset", GetBonusBarOffset)
+  Try("C_ActionBar.GetBonusBarIndex", AB and AB.GetBonusBarIndex)
+  Try("C_ActionBar.GetActionBarPage", AB and AB.GetActionBarPage)
+  Try("GetShapeshiftForm", GetShapeshiftForm)
+  local L = ns.Layout
+  local _, class = UnitClass("player")
+  if L and L.SpecLabel then out.spec = Str(L.SpecLabel(class)) end
+  local function Slots(first)
+    local parts = {}
+    for i = 1, 12 do
+      local ok, t, id = pcall(GetActionInfo, first + i)
+      parts[i] = (ok and t) and (Str(t) .. ":" .. Str(id)) or "-"
+    end
+    return table.concat(parts, " ")
+  end
+  out.bar1 = Slots(0)
+  for off = 1, 4 do out["bonus" .. off] = Slots(72 + (off - 1) * 12) end
+  if AB and type(AB.GetBonusBarIndexForSlot) == "function" then
+    local idx = {}
+    for off = 1, 4 do
+      local ok, v = pcall(AB.GetBonusBarIndexForSlot, 72 + (off - 1) * 12 + 1)
+      idx[off] = ok and Str(v) or "error"
+    end
+    out.bonusIndexForSlot = table.concat(idx, " ")
+  end
+  return out
+end
+
 local function Settled(st, rec, tries)
   local f = Window()
   local valid = Call(f, "IsRectValid")
@@ -720,6 +763,8 @@ local function Settled(st, rec, tries)
   rec.window = { Call(f, "GetRect") }
   rec.windowScale = Call(f, "GetEffectiveScale")
   rec.ms = debugprofilestop and debugprofilestop() or nil
+  local okBars, bars = pcall(DC.BarPaging)
+  rec.bars = okBars and bars or { error = Str(bars) }
   rec.rows, rec.truncated = DC.Dump(f, run.ctx.popup and { run.ctx.popup } or nil, run.dict)
   Shoot(st, rec)
 end

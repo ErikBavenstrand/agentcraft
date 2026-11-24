@@ -66,6 +66,8 @@ function FC.Walk(env, opts)
   local Focus = ns.Focus
   local UI = ns.UI
   local savedDb = Copy(ns.db or {})
+  -- Choice rows on a page (the spec picker) step a per-character value.
+  local savedCharSpec = ns.charDB and ns.charDB.spec
   local savedScale = UI.GetScale and UI.GetScale()
   local start = Focus.current
   if not start or not Focus.Usable(start) then start = Focus:Restore() end
@@ -171,9 +173,10 @@ function FC.Walk(env, opts)
           while target == f and type(nav) == "function" and tries < 30 do
             tries = tries + 1
             local before = Copy(ns.db or {})
+            local beforeValue = type(f.ValueText) == "function" and f:ValueText() or nil
             Focus:Move(dir, "key")
             target = Focus.current
-            local changed = false
+            local changed = beforeValue ~= nil and f:ValueText() ~= beforeValue
             for key, v in pairs(ns.db or {}) do if type(v) ~= "table" and before[key] ~= v then changed = true end end
             if not changed then break end
           end
@@ -292,6 +295,7 @@ function FC.Walk(env, opts)
 
   -- Put everything back.
   Restore(ns.db, savedDb)
+  if ns.charDB then ns.charDB.spec = savedCharSpec end
   if savedScale and UI.SetScale then pcall(UI.SetScale, savedScale) end
   if UI.RefreshPrompts then pcall(UI.RefreshPrompts) end
   if UI.Refresh then pcall(UI.Refresh) end

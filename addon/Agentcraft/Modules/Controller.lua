@@ -54,6 +54,8 @@ end
 --                                    trinket (7, 8) or the Hearthstone (12)
 --   { item = "Hearthstone" }         that bag item, if ActionBars.BAG_ITEMS allows it
 --   { racial = true }                your race's active racial
+--   { profession = 3 }               your 3rd profession spell in the stable order
+--                                    (ActionBars.ProfessionSpells); waits when you have fewer
 local RACIALS = { "War Stomp", "Berserking", "Blood Fury", "Will of the Forsaken", "Stoneform",
   "Shadowmeld", "Escape Artist", "Perception" }
 
@@ -69,6 +71,7 @@ end
 local function Util() return GamepadActionBarBindingUtil end
 local KnownID -- defined below
 local LibraryIcon -- defined below
+local ProfessionList -- defined below
 
 -- The class layout lives in Layout.lua, shared with the keyboard bars.
 local function Layout()
@@ -168,6 +171,19 @@ function KnownID(name, known)
   if id and ((IsPlayerSpell and IsPlayerSpell(id)) or (IsSpellKnown and IsSpellKnown(id))) then return id end
 end
 
+-- Your profession spells in the stable order, once per `known` map (a plan
+-- resolves eight profession slots against the same map).
+local professionCache = setmetatable({}, { __mode = "k" })
+function ProfessionList(known)
+  local list = known and professionCache[known]
+  if list then return list end
+  local AB = ns.modules.actionbars
+  list = AB and AB.ProfessionSpells and AB.ProfessionSpells(known) or {}
+  if known then professionCache[known] = list end
+  return list
+end
+M.ProfessionList = ProfessionList
+
 -- Returns a plan item: { kind, id, name, icon } or { missing = "label" }.
 function M.Resolve(entry, known, used)
   if entry.flyout then
@@ -210,6 +226,13 @@ function M.Resolve(entry, known, used)
     local id = AB and AB.ResolveUtilityItem({ entry.item })
     if id then return { kind = "item", id = id, name = entry.item } end
     return { missing = entry.item, reason = "carry" }
+  end
+  if entry.profession then
+    -- { profession = 3 }: your 3rd profession spell in the stable order
+    -- (ActionBars.ProfessionSpells); waits when you have fewer.
+    local s = ProfessionList(known)[entry.profession]
+    if s then return { kind = "spell", id = s.id, name = s.name } end
+    return { missing = "profession slot " .. entry.profession, reason = "profession" }
   end
   if entry.utility then
     local AB = ns.modules.actionbars
@@ -685,13 +708,15 @@ local REASON = {
   install = "Macro not installed. Install it on the Macros page, then apply again.",
   nomacro = "No autocast macro for this ability in the Macro Library yet.",
   notpaddle = "Back buttons are plain key bindings: they can't open a radial or toggle autocast.",
+  profession = "A shared profession slot: filled with your next profession spell. Added when you learn another profession and apply again.",
 }
 local function ReasonText(item) return REASON[item.reason] or REASON.learn end
 M.ReasonText = ReasonText
 
 local WAITING = { learn = "Waiting · learn it first", carry = "Waiting · carry one",
   equip = "Waiting · equip an on-use trinket", install = "Waiting · install its macro",
-  nomacro = "Waiting · no autocast macro yet", notpaddle = "Can't go on a back button" }
+  nomacro = "Waiting · no autocast macro yet", notpaddle = "Can't go on a back button",
+  profession = "Waiting · learn another profession" }
 local KIND = { spell = "Spell", item = "Item", macro = "Macro", flyout = "Radial" }
 
 -- "Waiting · install Bait on the Macros page": a macro home whose macro you
@@ -1510,20 +1535,24 @@ local function BuildHUD(page, stage)
   end
   HintLayout()
 
-  -- Row 1, right: the legend, or the Gamepad-UI-off plate.
+  -- Row 1, right: the spec whose layout the sets show (Layout.lua), then the
+  -- legend, or the Gamepad-UI-off plate. The controller's bars don't page by
+  -- stance, so there is no stance picker here.
+  page.specRow = UI.SpecRow(hud, 228, "controller:spec", 160)
+  page.specRow:SetPoint("TOPLEFT", hud, "TOPLEFT", 480, -40)
   page.legend = CreateFrame("Frame", nil, hud)
-  page.legend:SetPoint("TOPLEFT", hud, "TOPLEFT", 534, -48)
-  page.legend:SetSize(170, 120)
+  page.legend:SetPoint("TOPLEFT", hud, "TOPLEFT", 534, -82)
+  page.legend:SetSize(170, 84)
   local items = { { "added", "Added when you apply" }, { "removed", "Cleared when you apply" },
     { "missing", "Waiting to learn" }, { "flyout", "Radial (opens a ring)" } }
   for i, l in ipairs(items) do
     local it = UI.LegendItem(page.legend, l[1], l[2])
-    it:SetPoint("TOPLEFT", 0, -(i - 1) * 26)
+    it:SetPoint("TOPLEFT", 0, -(i - 1) * 21)
   end
   page.offPlate = UI.Plate(hud)
-  page.offPlate:SetPoint("TOPLEFT", hud, "TOPLEFT", 526, -46)
-  page.offPlate:SetSize(178, 126)
-  local offText = UI.Text(page.offPlate, "The Gamepad UI is off. These bars fill when you turn it on (Options › Controls › Gamepad). The back buttons still apply.", "GameFontHighlight")
+  page.offPlate:SetPoint("TOPLEFT", hud, "TOPLEFT", 522, -80)
+  page.offPlate:SetSize(186, 92)
+  local offText = UI.Text(page.offPlate, "The Gamepad UI is off. These bars fill when you turn it on (Options › Controls › Gamepad). The back buttons still apply.", "GameFontHighlightSmall")
   offText:SetPoint("TOPLEFT", 10, -10)
   offText:SetPoint("TOPRIGHT", -10, -10)
   offText:SetJustifyH("LEFT")
@@ -1827,11 +1856,15 @@ ns.RegisterPage({
       end
     end
     page.setNum:SetText(tostring(set))
+    page.titles = LayoutTitles() -- the active spec's set titles
     page.setName:SetText(page.titles[set] or (plan[set] and plan[set].title) or "")
     page.setCount:SetText(string.format("%d of %d buttons in place", inPlace, homes))
     local off = not Gamepad()
     page.offPlate:SetShown(off)
     page.legend:SetShown(not off)
+    local specs = page.specRow:HasSpecs()
+    page.specRow:SetShown(specs)
+    if specs then page.specRow:Sync() end
     for key, sk in pairs(page.paddles) do FillPaddle(sk, plan.paddles[key]) end
     UpdateBars(page)
   end,

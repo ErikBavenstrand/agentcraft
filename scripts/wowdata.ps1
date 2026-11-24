@@ -754,6 +754,7 @@ function Cmd-Capture {
 
   $steps = As-List $cap['steps']
   $shots = Find-Shots $files $steps
+  $prevBars = $null
   foreach ($st in $steps) {
     if (-not $st) { continue }
     $name = [string]$st['name']
@@ -851,6 +852,18 @@ function Cmd-Capture {
     if ($st['error']) { $report.Add("     ERROR: $($st['error'])") }
     if ($st['note']) { $report.Add("     note: $($st['note'])") }
     if ($st['rectValid'] -eq $false) { $report.Add('     rect not valid when dumped') }
+    # Bar paging (stance pages): printed on the first step and whenever it changes.
+    $bars = $st['bars']
+    if ($bars) {
+      $barText = (@('C_ActionBar.GetBonusBarOffset', 'GetBonusBarOffset', 'C_ActionBar.GetBonusBarIndex', 'GetShapeshiftForm', 'spec', 'bonusIndexForSlot') | Where-Object { $null -ne $bars[$_] } | ForEach-Object { "$_=$($bars[$_])" }) -join '  '
+      $slotText = (@('bar1', 'bonus1', 'bonus2', 'bonus3', 'bonus4') | ForEach-Object { "       ${_}: $($bars[$_])" }) -join "`n"
+      $all = "$barText`n$slotText"
+      if ($all -ne $prevBars) {
+        $report.Add("     bars: $barText")
+        foreach ($l in ($slotText -split "`n")) { $report.Add($l) }
+        $prevBars = $all
+      }
+    }
     $counts = @($kinds | ForEach-Object { "$_ $($issues[$_].Count)" }) -join ', '
     $report.Add("     rows $($rows.Count) ($visible visible$(if ($st['truncated']) { ', TRUNCATED at the row cap' })): $counts")
     foreach ($k in $kinds) {
@@ -869,7 +882,7 @@ function Cmd-Capture {
         index = $st['index']; name = $name; page = $st['page']; view = $st['view']; mode = $st['mode']; after = $st['after']
         prompts = $st['prompts']; focus = $st['focus']; focusZone = $st['focusZone']; note = $st['note']; error = $st['error']
         screenshot = if ($file) { $file.Path } else { $null }; shot = $shot; rectValid = $st['rectValid']
-        window = $st['window']; windowScale = $st['windowScale']; truncated = $st['truncated']
+        window = $st['window']; windowScale = $st['windowScale']; truncated = $st['truncated']; bars = $st['bars']
         issues = $issues; probe = $probe; rows = $jsonRows.ToArray()
       })
     }

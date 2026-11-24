@@ -274,6 +274,124 @@ function UI.Toggle2(parent, a, b, onChange)
   return t
 end
 
+-- Choice row --------------------------------------------------------------------------------
+-- A label and the Settings panel's dropdown (WowStyle1DropdownTemplate) on
+-- one 32 px focus node, as the Options page's choice rows; without the Menu
+-- API it shows "< Value >". A (or a click on the row) cycles, Left/Right
+-- step and hand focus on at either end, so the D-pad never dead-ends.
+-- opts: label, width, dropdownWidth, id (acId), choices() -> { { key, text }, ... },
+-- get() -> key, set(key) (the caller refreshes), inspect(row, pane).
+-- row:Sync() after the choices or value change (only what changed redraws).
+function UI.ChoiceRow(parent, opts)
+  local r = CreateFrame("Button", nil, parent)
+  r:SetSize(opts.width or 260, 32)
+  r.bg = r:CreateTexture(nil, "BACKGROUND", nil, 2)
+  r.bg:SetAllPoints()
+  if not UI.SetAtlas(r.bg, UI.ART.zebra) then r.bg:SetTexture(UI.WHITE); r.bg:SetVertexColor(1, 1, 1, 0.06) end
+  r.label = UI.Text(r, opts.label or "", "GameFontNormal")
+  r.label:SetPoint("LEFT", 10, 0)
+  r.label:SetJustifyH("LEFT")
+  r.label:SetWordWrap(false)
+  local function List() return (opts.choices and opts.choices()) or {} end
+  local function Index()
+    local list, v = List(), opts.get and opts.get()
+    for i, c in ipairs(list) do if c[1] == v then return i, list end end
+    return 1, list
+  end
+  local function Choose(i)
+    local _, list = Index()
+    i = math.max(1, math.min(#list, i))
+    if not list[i] or list[i][1] == (opts.get and opts.get()) then return end
+    UI.Sound("view")
+    if opts.set then opts.set(list[i][1]) end
+    r:Sync()
+  end
+  r.Choose = Choose
+  local ddWidth = opts.dropdownWidth or math.min(170, math.floor((opts.width or 260) * 0.62))
+  if UI.Has("WowStyle1DropdownTemplate") then
+    r.dropdown = UI.Dropdown(r, function(_, root)
+      for i, c in ipairs(List()) do
+        root:CreateRadio(c[2], function(j) return (Index()) == j end, function(j) Choose(j) end, i)
+      end
+    end, ddWidth)
+    r.dropdown:SetPoint("RIGHT", r, "RIGHT", -8, 0)
+    r.label:SetPoint("RIGHT", r.dropdown, "LEFT", -8, 0)
+    r.dropdown:HookScript("OnMouseDown", function()
+      if ns.Focus and ns.Focus.Set and not ns.Focus.setting then ns.Focus:Set(r, "click", true, true) end
+    end)
+    UI.MarkIgnored(r.dropdown)
+  else
+    r.valueFs = UI.Text(r, "", "GameFontHighlight")
+    r.valueFs:SetPoint("RIGHT", r, "RIGHT", -10, 0)
+    r.valueFs:SetWidth(ddWidth)
+    r.valueFs:SetJustifyH("RIGHT")
+    r.valueFs:SetWordWrap(false)
+    r.label:SetPoint("RIGHT", r.valueFs, "LEFT", -8, 0)
+  end
+  UI.Node(r, { style = "row", id = opts.id, inspect = opts.inspect })
+  r.acPromptA = "Change"
+  r:SetScript("OnClick", function()
+    local i, list = Index()
+    Choose(i % math.max(1, #list) + 1)
+  end)
+  r.navLeft = function() local i = Index() if i > 1 then Choose(i - 1) return false end end
+  r.navRight = function() local i, list = Index() if i < #list then Choose(i + 1) return false end end
+  function r.ValueText()
+    local i, list = Index()
+    return list[i] and list[i][2] or ""
+  end
+  function r.Sync(self)
+    local text = self:ValueText()
+    if self.synced == text then return end
+    self.synced = text
+    if self.dropdown then
+      if self.dropdown.GenerateMenu then self.dropdown:GenerateMenu() end
+    else
+      self.valueFs:SetText("< " .. text .. " >")
+    end
+  end
+  return r
+end
+
+-- The spec picker of the Keyboard and Controller pages: "Automatic (Arms)",
+-- then each spec (Modules/Layout.lua). Choosing one stores it for this
+-- character (AgentcraftCharDB.spec) and refreshes the page's plan; Apply
+-- then puts that spec's layout on the bars. row.class is the class it
+-- shows; Sync() after a refresh.
+local SPEC_WHY = {
+  talents = "the talent tab with the most points",
+  level = "the leveling spec while you are below level 10",
+  points = "the leveling spec until you spend talent points",
+  unknown = "the leveling spec (the client didn't report your talents)",
+}
+local function SpecInspect(row, pane)
+  local L = ns.Layout
+  local class = row.class
+  pane:Header("Interface\\Icons\\INV_Misc_Book_11", "Spec", "Which layout the bars use")
+  pane:Row("Using", (L and L.SpecLabel(class)) or "-", UI.C.HIGHLIGHT)
+  local key, why = L.DetectSpec(class)
+  local spec = key and L.SpecByKey(class, key)
+  pane:Row("Automatic", spec and spec.name or "-")
+  pane:Text("Automatic follows " .. (SPEC_WHY[why] or "your talents") .. ". Pick a spec to keep its layout on this character whatever your talents say.")
+  pane:Text("Changing it changes the plan only: Review & Apply puts it on your bars.", UI.C.GRAY)
+end
+function UI.SpecRow(parent, width, id, dropdownWidth)
+  local _, class = UnitClass("player")
+  local L = ns.Layout
+  local row = UI.ChoiceRow(parent, {
+    label = "Spec", width = width, id = id, inspect = SpecInspect, dropdownWidth = dropdownWidth,
+    choices = function() return L and L.SpecChoices(class) or {} end,
+    get = function() return L and L.SpecChoiceKey(class) end,
+    set = function(key)
+      if L then L.SetSpecChoice(key) end
+      if UI.Refresh then UI.Refresh() end
+    end,
+  })
+  row.class = class
+  row.HasSpecs = function() return L ~= nil and #L.Specs(class) > 0 end
+  return row
+end
+
 -- Meter -------------------------------------------------------------------------------------
 -- Readiness bar w x 12: meter:SetValue(done, total [, pending]),
 -- meter:AnimateTo(done, total), meter:SetLabel(text) (label above, right).

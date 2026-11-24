@@ -1,7 +1,7 @@
 ## Interface: 120105, 50504, 20506, 16001, 11509
 ## Title: Agentcraft
 ## Notes: Your character, readable by Claude Code. Type /ac to open the window.
-## Version: 0.33.0
+## Version: 0.35.1
 ## SavedVariables: AgentcraftDB
 ## SavedVariablesPerCharacter: AgentcraftCharDB
 
@@ -13,6 +13,16 @@ UI\Controls.lua
 UI\Slots.lua
 UI\Inspector.lua
 Modules\Layout.lua
+Layouts\Shared.lua
+Layouts\Hunter.lua
+Layouts\Warrior.lua
+Layouts\Paladin.lua
+Layouts\Rogue.lua
+Layouts\Priest.lua
+Layouts\Shaman.lua
+Layouts\Mage.lua
+Layouts\Warlock.lua
+Layouts\Druid.lua
 Modules\ActionBars.lua
 Modules\Keybinds.lua
 Modules\Snapshot.lua
@@ -20,6 +30,14 @@ Modules\SnapshotMore.lua
 Modules\SnapshotCached.lua
 Macros\Library.lua
 Macros\Data\Hunter.lua
+Macros\Data\Warrior.lua
+Macros\Data\Paladin.lua
+Macros\Data\Rogue.lua
+Macros\Data\Priest.lua
+Macros\Data\Shaman.lua
+Macros\Data\Mage.lua
+Macros\Data\Warlock.lua
+Macros\Data\Druid.lua
 Macros\Data\General.lua
 Macros\Data\Racial.lua
 Macros\Page.lua

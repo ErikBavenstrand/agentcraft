@@ -60,11 +60,17 @@ return {
     { name = "Basic Campfire", id = 818, icon = 135805 },
   },
 
-  -- Professions (GetProfessions / GetProfessionInfo): their spells sit in the
+  -- Professions (GetProfessions / GetProfessionInfo), as the owner's hunter
+  -- (Mining, Engineering, First Aid, Fishing, Cooking): their spells sit in the
   -- spellbook outside the class skill line. WoW Forever lists some under an
   -- old and a new spell ID with the same name: Engineering twice here, and
   -- Cooking again (1240956) though the class line already has it (18260).
   professions = {
+    { name = "Mining", icon = 136248, spells = {
+      { name = "Mining", id = 2575, icon = 136248 },
+      { name = "Smelting", id = 2656, icon = 135811 },
+      { name = "Find Minerals", id = 2580, icon = 136025 },
+    } },
     { name = "Engineering", icon = 136243, spells = {
       { name = "Engineering", id = 4036, icon = 136243 },
       { name = "Engineering", id = 1240958, icon = 136243 },
@@ -85,6 +91,16 @@ return {
       { name = "Aspect of the Cheetah", id = 5118, icon = 132242 },
       { name = "Aspect of the Pack", id = 13159, icon = 132267 },
     } },
+  },
+
+  -- Other real spell names the layouts name that the fixture doesn't model
+  -- (rules only, no ID: R.FixtureSpells; adding them as spells would change
+  -- what the tests see).
+  otherSpells = {
+    "Summon Hawk", "Sniper Shot", "Strider Kick", "Deterrence", "Scorpid Sting", "Distracting Shot",
+    "Aspect of the Beast", "Aspect of the Wild",
+    "Find Herbs", "Skinning", "Alchemy", "Blacksmithing",
+    "Leatherworking", "Tailoring", "Enchanting", "Disenchant",
   },
 
   -- Spells the game knows but the player hasn't learned (C_Spell.GetSpellInfo works).

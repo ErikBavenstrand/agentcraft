@@ -42,6 +42,7 @@ test("every macro a layout names exists in the library", function()
   end
   Walk(env.ns.Layout.keyboard, "keyboard")
   Walk(env.ns.Layout.controller, "controller")
+  Walk(env.ns.Layout.classes, "classes") -- spec overrides too
   if #missing > 0 then fail("layout names macros that aren't in the library: " .. table.concat(missing, ", ")) end
 end)
 
@@ -64,6 +65,7 @@ test("every spell has one home per device (page-1 back-button mirrors are notes)
   local classes = {}
   for class in pairs(env.ns.Layout.keyboard or {}) do classes[class] = true end
   for class in pairs(env.ns.Layout.controller or {}) do classes[class] = true end
+  for class in pairs(env.ns.Layout.classes or {}) do classes[class] = true end
   for class in pairs(classes) do
     for _, p in ipairs(H.rules.CheckLayout(env.ns.Layout, class, opts)) do
       if p.severity == "error" then errors[#errors + 1] = p.msg else note(p.msg) end
@@ -83,7 +85,10 @@ end)
 
 test("layout rules: keyboard bar 4 (Ctrl) is checked for one home and no flyouts; [3] is ignored", function()
   local R = H.rules
+  -- Bars are written in full (12 entries, false for an empty key).
+  local function Pad(t) for i = 1, 12 do if t[i] == nil then t[i] = false end end return t end
   local function Run(kb)
+    for _, bar in ipairs({ 1, 2, 4 }) do if kb[bar] then Pad(kb[bar]) end end
     local out = {}
     for _, p in ipairs(R.CheckLayout({ keyboard = { HUNTER = kb } }, "HUNTER", { lib = {}, retired = {} })) do
       out[#out + 1] = p.severity .. " " .. p.rule .. " " .. p.msg

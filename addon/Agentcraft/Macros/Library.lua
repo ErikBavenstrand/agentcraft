@@ -122,11 +122,12 @@ end
 local function MyProfessions()
   local have = {}
   if GetProfessions then
-    -- Any of the five can be nil (no second primary, no First Aid...), and
-    -- ipairs stops at the first nil, so take them by name.
-    local a, b, c, d, e = GetProfessions()
-    for _, idx in pairs({ a, b, c, d, e }) do
-      local name = GetProfessionInfo(idx)
+    -- Any of the six (primary 1, primary 2, archaeology, fishing, cooking,
+    -- first aid) can be nil, and ipairs stops at the first nil, so walk
+    -- every return.
+    local list = { GetProfessions() }
+    for p = 1, select("#", GetProfessions()) do
+      local name = list[p] and GetProfessionInfo(list[p])
       if name then have[name] = true end
     end
   end

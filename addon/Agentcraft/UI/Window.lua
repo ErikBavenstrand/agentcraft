@@ -1357,7 +1357,9 @@ local function Build()
   -- Keep the open page current while you play.
   local pending
   for _, ev in ipairs({ "ACTIONBAR_SLOT_CHANGED", "UPDATE_BINDINGS", "BAG_UPDATE_DELAYED", "SPELLS_CHANGED",
-                        "PLAYER_EQUIPMENT_CHANGED", "PET_BAR_UPDATE", "PLAYER_LEVEL_UP", "UNIT_PORTRAIT_UPDATE" }) do
+                        "PLAYER_EQUIPMENT_CHANGED", "PET_BAR_UPDATE", "PLAYER_LEVEL_UP", "UNIT_PORTRAIT_UPDATE",
+                        -- talents pick the spec (Layout.ActiveSpec); the stance page shows on the Keyboard page
+                        "TRAIT_CONFIG_UPDATED", "PLAYER_TALENT_UPDATE", "UPDATE_BONUS_ACTIONBAR" }) do
     pcall(frame.RegisterEvent, frame, ev)
   end
   frame:SetScript("OnEvent", function(_, event, unit)

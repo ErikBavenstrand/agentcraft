@@ -408,6 +408,12 @@ function Cmd-Toc {
       if ($null -ne $lib -and $k -lt $lib) { Add-Finding ERROR toc-order "${tocName}:$($f.Line)" "$p loads before Macros\Library.lua (L.Add would be nil)" }
       if ($null -ne $page -and $k -gt $page) { Add-Finding WARN toc-order "${tocName}:$($f.Line)" "$p loads after Macros\Page.lua; data files go above it" }
     }
+    if ($p -like 'Layouts\*') {
+      $lay = Pos 'Modules\Layout.lua'
+      if ($null -ne $lay -and $k -lt $lay) { Add-Finding ERROR toc-order "${tocName}:$($f.Line)" "$p loads before Modules\Layout.lua (ns.Layout.Register would be nil)" }
+      $ab = Pos 'Modules\ActionBars.lua'
+      if ($null -ne $ab -and $k -gt $ab) { Add-Finding WARN toc-order "${tocName}:$($f.Line)" "$p loads after Modules\ActionBars.lua; class layouts go right below Modules\Layout.lua" }
+    }
     if ($null -ne $window -and $k -gt $window -and $p -notlike 'UI\*') { Add-Finding WARN toc-order "${tocName}:$($f.Line)" "$p loads after UI\Window.lua; new files go above it" }
   }
   # Every macro data file on disk is listed (caught above too, but say why it matters).
@@ -566,6 +572,7 @@ function Get-HomeNames($e) {
   # flyout twice, break "one home"). petauto and overflow entries are not homes.
   if ($e.Has('macro')) { $out.Add("<macro $($e.Get('macro'))>") }
   if ($e.Has('flyout')) { $out.Add("<flyout $($e.Get('flyout'))>") }
+  if ($e.Has('profession')) { $out.Add("<profession $($e.Get('profession'))>") }
   return $out.ToArray()
 }
 
@@ -582,10 +589,42 @@ function Get-CastSpells([string]$body) {
   return $out.ToArray()
 }
 
+# Fields a layout entry may have besides its spell names.
+$EntryFields = @('macro', 'flyout', 'utility', 'item', 'racial', 'petauto', 'overflow', 'upgrade', 'covers', 'profession')
+# Spells of Layout.PROFESSIONS (Modules/Layout.lua; keep in step): their home
+# is the shared { profession = n } slots, never a class layout.
+$ProfessionSpells = @('Alchemy', 'Blacksmithing', 'Enchanting', 'Engineering', 'Herbalism', 'Inscription',
+  'Jewelcrafting', 'Leatherworking', 'Mining', 'Skinning', 'Tailoring', 'Cooking', 'First Aid', 'Bait and Tackle',
+  'Find Minerals', 'Find Herbs', 'Smelting', 'Disenchant', 'Prospecting', 'Milling', 'Survey')
+# The shared controller buttons (Layouts/Shared.lua): page number -> LuaTable
+# of entries, read by Read-SharedLayout before the class layouts.
+$script:SharedPages = @{}
+$SpecFields = @('key', 'name', 'tab', 'default', 'keyboard', 'controller')
+# Classic bonus bar offsets per stance key (Layout.STANCE_OFFSETS, rules.lua).
+$StanceOffsets = @{
+  WARRIOR = @{ battle = 1; defensive = 2; berserker = 3 }
+  DRUID   = @{ cat = 1; bear = 3; moonkin = 4 }
+  ROGUE   = @{ stealth = 1 }
+  PRIEST  = @{ shadowform = 1 }
+}
+
 function Test-Entry($entry, [string]$class, [string]$device, [string]$where, [string]$label, $lib, $retired) {
+  # false in a keyboard bar: a key left empty on purpose.
+  if ($device -eq 'keyboard' -and $entry -is [bool] -and -not $entry) { return }
   if ($entry -isnot [LuaTable]) { Add-Finding ERROR layout-entry $where "$label is not a table entry"; return }
+  foreach ($k in $entry.Hash.Keys) {
+    if ($EntryFields -notcontains $k) { Add-Finding ERROR layout-entry $where "${label}: unknown field '$k' (fields: $($EntryFields -join ', '))" }
+  }
+  foreach ($v in $entry.Arr) {
+    if ($v -isnot [string]) { Add-Finding ERROR layout-entry $where "${label}: '$v' is not a spell name (entries list names only)" }
+    elseif ($ProfessionSpells -contains $v) { Add-Finding ERROR layout-profession $where "${label}: '$v' is a profession spell; the shared profession slots (Layouts\Shared.lua) are its home" }
+  }
+  if ($entry.Has('profession')) {
+    $pn = $entry.Get('profession')
+    if (-not ($pn -is [double]) -or $pn -lt 1 -or $pn -ne [Math]::Floor($pn)) { Add-Finding ERROR layout-entry $where "${label}: profession must be 1 or more (the Nth profession spell)" }
+  }
   if ($device -eq 'keyboard') {
-    foreach ($k in 'flyout', 'petauto', 'overflow') {
+    foreach ($k in 'flyout', 'petauto', 'overflow', 'profession') {
       if ($entry.Has($k)) { Add-Finding ERROR layout-keyboard $where "$label uses { $k = ... }: the keyboard layout is plain keybinds, no flyouts/controller-only entries" }
     }
   }
@@ -605,126 +644,369 @@ function Test-Entry($entry, [string]$class, [string]$device, [string]$where, [st
   }
 }
 
-function Test-Layout($lib, $retired) {
-  $file = Join-Path $Addon 'Modules\Layout.lua'
-  $rel = Rel $file
-  $lit = [LuaLit]::new((ReadText $file))
-  $kb = @($lit.Tables('\bL\.keyboard\s*=\s*(?=\{)'))
-  $ct = @($lit.Tables('\bL\.controller\s*=\s*(?=\{)'))
-  if ($kb.Count -eq 0) { Add-Finding ERROR layout-parse $rel "L.keyboard = { ... } not found" }
-  if ($ct.Count -eq 0) { Add-Finding ERROR layout-parse $rel "L.controller = { ... } not found" }
+# A keyboard bar or stance page: exactly 12 positional entries (false = a key
+# left empty on purpose).
+function Test-Twelve($entries, [string]$where, [string]$label) {
+  if ($entries -isnot [LuaTable]) { Add-Finding ERROR layout-keyboard $where "$label is not a table"; return $false }
+  if ($entries.Arr.Count -gt 12) { Add-Finding ERROR layout-keyboard $where "$label has $($entries.Arr.Count) entries; it has 12 keys" }
+  elseif ($entries.Arr.Count -lt 12) { Add-Finding ERROR layout-keyboard $where "$label has $($entries.Arr.Count) entries; write all 12 (false for a key left empty)" }
+  return $true
+}
 
-  # Keyboard ---------------------------------------------------------------
-  foreach ($kbt in $kb) {
-    foreach ($class in $kbt.Hash.Keys) {
-      $layout = $kbt.Hash[$class]
-      $homes = @{}
-      # Keyed bars from the layout: 1 plain, 2 Shift, 4 Ctrl. Bar 3 (Alt) is the
-      # utility bar, filled by ActionBars, so a [3] here is never read.
-      $bar3 = Get-Bar $layout 3
-      if ($bar3) { Add-Finding WARN layout-keyboard "${rel}:$($bar3.Line)" "$class keyboard bar 3 is the Alt utility bar (ActionBars.utility); the layout's [3] is ignored" }
-      $kbMod = @{ 1 = ''; 2 = 'Shift+'; 4 = 'Ctrl+' }
-      foreach ($bar in 1, 2, 4) {
-        $entries = Get-Bar $layout $bar
-        if (-not $entries) { continue }
-        if ($entries.Arr.Count -gt 12) { Add-Finding ERROR layout-keyboard "${rel}:$($entries.Line)" "$class keyboard bar $bar has $($entries.Arr.Count) entries; it has 12 keys" }
-        if ($entries.Hash.Count -gt 0) { Add-Finding WARN layout-keyboard "${rel}:$($entries.Line)" "$class keyboard bar $bar has keyed entries ($($entries.Hash.Keys -join ', ')); only the 12-entry list is read" }
-        for ($i = 0; $i -lt $entries.Arr.Count; $i++) {
-          $e = $entries.Arr[$i]
-          $key = $kbMod[$bar] + $KbKeys[$i]
-          $where = "${rel}:$($e.Line)"
-          Test-Entry $e $class 'keyboard' $where "$class keyboard $key" $lib $retired
-          if ($e -is [LuaTable]) {
-            foreach ($s in (Get-HomeNames $e)) {
-              if (-not $homes.ContainsKey($s)) { $homes[$s] = New-Object System.Collections.Generic.List[string] }
-              $homes[$s].Add("$key (line $($e.Line))")
-            }
-          }
-        }
+# One spec's (or the shared) keyboard layout. $who names it in messages.
+function Test-KeyboardLayout($layout, [string]$class, [string]$who, [string]$rel, $lib, $retired) {
+  if ($layout -isnot [LuaTable]) { Add-Finding ERROR layout-parse $rel "$who keyboard is not a table"; return }
+  foreach ($k in $layout.Hash.Keys) {
+    if (@('1', '2', '3', '4', 'stances') -notcontains $k) { Add-Finding ERROR layout-keyboard "${rel}:$($layout.Line)" "$who keyboard: unknown field '$k' (bars [1], [2], [4] and stances)" }
+  }
+  # Keyed bars from the layout: 1 plain, 2 Shift, 4 Ctrl. Bar 3 (Alt) is the
+  # utility bar, filled by ActionBars, so a [3] here is never read.
+  $bar3 = Get-Bar $layout 3
+  if ($bar3) { Add-Finding WARN layout-keyboard "${rel}:$($bar3.Line)" "$who keyboard bar 3 is the Alt utility bar (ActionBars.utility); the layout's [3] is ignored" }
+  $kbMod = @{ 1 = ''; 2 = 'Shift+'; 4 = 'Ctrl+' }
+  # name -> @{ Key; Bar1 (key index on a Bar 1 page, or -1); Pages }
+  $homes = @{}
+  $homeList = @{} # name -> list of homes (for Test-MacroCasts)
+  $addHome = {
+    param($e, [string]$key, [string]$page, [int]$i)
+    foreach ($s in (Get-HomeNames $e)) {
+      if (-not $homeList.ContainsKey($s)) { $homeList[$s] = New-Object System.Collections.Generic.List[string] }
+      $homeList[$s].Add("$key (line $($e.Line))")
+      if (-not $homes.ContainsKey($s)) {
+        $b1 = -1; if ($page) { $b1 = $i }
+        $homes[$s] = @{ Key = "$key (line $($e.Line))"; Bar1 = $b1; Pages = @{ $page = $true } }
+      } elseif ($page -and $homes[$s].Bar1 -eq $i -and -not $homes[$s].Pages.ContainsKey($page)) {
+        $homes[$s].Pages[$page] = $true  # the same key on another stance page: still one home
+      } else {
+        Add-Finding ERROR layout-two-homes "${rel}:$($e.Line)" "$who keyboard: '$s' at $($homes[$s].Key) and $key"
       }
-      foreach ($s in $homes.Keys) {
-        if ($homes[$s].Count -gt 1) { Add-Finding ERROR layout-two-homes "${rel}:$($layout.Line)" "$class keyboard: '$s' has $($homes[$s].Count) homes: $($homes[$s] -join ', ')" }
-      }
-      Test-MacroCasts $layout $class 'keyboard' $homes $lib $rel
     }
   }
+  foreach ($bar in 1, 2, 4) {
+    $entries = Get-Bar $layout $bar
+    if (-not $entries) { continue }
+    $label = "$who keyboard bar $bar"
+    if (-not (Test-Twelve $entries "${rel}:$($entries.Line)" $label)) { continue }
+    if ($entries.Hash.Count -gt 0) { Add-Finding WARN layout-keyboard "${rel}:$($entries.Line)" "$label has keyed entries ($($entries.Hash.Keys -join ', ')); only the 12-entry list is read" }
+    for ($i = 0; $i -lt [Math]::Min(12, $entries.Arr.Count); $i++) {
+      $e = $entries.Arr[$i]
+      $key = $kbMod[$bar] + $KbKeys[$i]
+      $line = $entries.Line; if ($e -is [LuaTable]) { $line = $e.Line }
+      Test-Entry $e $class 'keyboard' "${rel}:$line" "$who keyboard $key" $lib $retired
+      if ($e -is [LuaTable]) { $page = ''; if ($bar -eq 1) { $page = 'base' }; & $addHome $e $key $page $i }
+    }
+  }
+  $stances = $layout.Get('stances')
+  if ($null -ne $stances) {
+    if ($stances -isnot [LuaTable]) { Add-Finding ERROR layout-stance "${rel}:$($layout.Line)" "$who keyboard stances is not a table" }
+    else {
+      $offsets = @{}
+      $known = $StanceOffsets[$class]
+      foreach ($sk in $stances.Hash.Keys) {
+        $st = $stances.Hash[$sk]
+        $label = "$who stance page $sk"
+        if ($st -isnot [LuaTable]) { if ($st -ne $false) { Add-Finding ERROR layout-stance "${rel}:$($stances.Line)" "$label is not a table" }; continue }
+        $where = "${rel}:$($st.Line)"
+        foreach ($k in $st.Hash.Keys) {
+          if (@('offset', 'label') -notcontains $k) { Add-Finding ERROR layout-stance $where "${label}: unknown field '$k' (offset, label and 12 entries)" }
+        }
+        $off = $st.Get('offset')
+        if (-not ($off -is [double]) -or $off -lt 1 -or $off -gt 4 -or $off -ne [Math]::Floor($off)) {
+          Add-Finding ERROR layout-stance $where "${label}: offset must be 1-4 (bonus bars 7-10, slots 73-120)"
+        } else {
+          $o = [int]$off
+          if ($offsets.ContainsKey($o)) { Add-Finding ERROR layout-stance $where "${label}: offset $o is also stance page $($offsets[$o])" }
+          $offsets[$o] = $sk
+          if (-not $known) { Add-Finding WARN layout-stance $where "${label}: $class has no stance, form or stealth paging" }
+          elseif (-not $known.ContainsKey($sk)) { Add-Finding WARN layout-stance $where "${label}: not a known $class stance (known: $(($known.Keys | Sort-Object) -join ', '))" }
+          elseif ($known[$sk] -ne $o) { Add-Finding WARN layout-stance $where "${label}: offset $o, but $sk is bonus bar offset $($known[$sk])" }
+        }
+        $stLabel = $st.Get('label'); if (-not ($stLabel -is [string])) { $stLabel = $sk }
+        if (-not (Test-Twelve $st $where $label)) { continue }
+        for ($i = 0; $i -lt [Math]::Min(12, $st.Arr.Count); $i++) {
+          $e = $st.Arr[$i]
+          $key = "${stLabel}: $($KbKeys[$i])"
+          $line = $st.Line; if ($e -is [LuaTable]) { $line = $e.Line }
+          Test-Entry $e $class 'keyboard' "${rel}:$line" "$who keyboard $key" $lib $retired
+          if ($e -is [LuaTable]) { & $addHome $e $key $sk $i }
+        }
+      }
+    }
+  }
+  Test-MacroCasts $layout $class 'keyboard' $homeList $lib $rel
+}
 
-  # Controller -------------------------------------------------------------
-  foreach ($ctt in $ct) {
-    foreach ($class in $ctt.Hash.Keys) {
-      $layout = $ctt.Hash[$class]
-      $pages = $layout.Get('pages')
-      $paddles = $layout.Get('paddles')
-      $homes = @{}      # spell -> list of page homes
-      $homePages = @{}  # spell -> pages (1-3) it has a home on
-      $padHomes = @{}   # spell -> list of paddle homes
-      if (-not $pages) { Add-Finding ERROR layout-parse "${rel}:$($layout.Line)" "$class controller layout has no pages"; continue }
-      for ($p = 0; $p -lt $pages.Arr.Count; $p++) {
-        $page = $pages.Arr[$p]
-        foreach ($key in $page.Hash.Keys) {
-          if ($key -eq 'title') { continue }
-          $e = $page.Hash[$key]
-          $where = "${rel}:$($e.Line)"
-          $label = "$class controller page $($p + 1) [$key]"
-          if ($key -notmatch '^(none|LT|RT|LT\+RT) (A|X|B|Y|Up|Down|Left|Right)$') { Add-Finding ERROR layout-key $where "$label is not '<none|LT|RT|LT+RT> <A|X|B|Y|Up|Down|Left|Right>'" }
-          elseif ($key -match '^none (A|X|B|Y)$') { Add-Finding ERROR layout-key $where "${label}: the Top bar's face buttons are fixed by the Gamepad UI" }
-          Test-Entry $e $class 'controller' $where $label $lib $retired
-          if ($e -is [LuaTable]) {
-            foreach ($s in (Get-HomeNames $e)) {
-              if (-not $homes.ContainsKey($s)) { $homes[$s] = New-Object System.Collections.Generic.List[string] }
-              $homes[$s].Add("p$($p + 1) $key (line $($e.Line))")
-              if (-not $homePages.ContainsKey($s)) { $homePages[$s] = @{} }
-              $homePages[$s][$p + 1] = $true
-            }
-          }
+# One spec's (or the shared) controller layout.
+function Test-ControllerLayout($layout, [string]$class, [string]$who, [string]$rel, $lib, $retired) {
+  if ($layout -isnot [LuaTable]) { Add-Finding ERROR layout-parse $rel "$who controller is not a table"; return }
+  $pages = $layout.Get('pages')
+  $paddles = $layout.Get('paddles')
+  $homes = @{}      # spell -> list of page homes
+  $homePages = @{}  # spell -> pages (1-3) it has a home on
+  $padHomes = @{}   # spell -> list of paddle homes
+  if (-not $pages) { Add-Finding ERROR layout-parse "${rel}:$($layout.Line)" "$who controller layout has no pages"; return }
+  $nPages = $pages.Arr.Count
+  foreach ($sp in $script:SharedPages.Keys) { if ($sp -gt $nPages) { $nPages = $sp } }
+  for ($p = 0; $p -lt $nPages; $p++) {
+    $page = $null
+    if ($p -lt $pages.Arr.Count) { $page = $pages.Arr[$p] }
+    $sharedPage = $script:SharedPages[$p + 1]
+    # The page's own entries, then the shared buttons merged into it (Layout.WithShared).
+    $items = New-Object System.Collections.Generic.List[object]
+    if ($page -is [LuaTable]) {
+      foreach ($key in $page.Hash.Keys) {
+        if ($key -eq 'title') { continue }
+        if ($sharedPage -and $sharedPage.Hash.Contains($key)) {
+          Add-Finding ERROR layout-shared "${rel}:$($page.Hash[$key].Line)" "$who controller page $($p + 1) [$key] is a shared button (Layouts\Shared.lua); leave it out of the class page"
+          continue
+        }
+        $items.Add(@($key, $page.Hash[$key], $rel))
+      }
+    }
+    if ($sharedPage) {
+      foreach ($key in $sharedPage.Hash.Keys) { if ($key -ne 'title') { $items.Add(@($key, $sharedPage.Hash[$key], $script:SharedRel)) } }
+    }
+    foreach ($it in $items) {
+      $key = $it[0]; $e = $it[1]
+      $where = "$($it[2]):$($e.Line)"
+      $label = "$who controller page $($p + 1) [$key]"
+      # Shared buttons are checked once, in Read-SharedLayout; here they count as homes.
+      if ($it[2] -eq $rel) {
+        if ($key -notmatch '^(none|LT|RT|LT\+RT) (A|X|B|Y|Up|Down|Left|Right)$') { Add-Finding ERROR layout-key $where "$label is not '<none|LT|RT|LT+RT> <A|X|B|Y|Up|Down|Left|Right>'" }
+        elseif ($key -match '^none (A|X|B|Y)$') { Add-Finding ERROR layout-key $where "${label}: the Top bar's face buttons are fixed by the Gamepad UI" }
+        Test-Entry $e $class 'controller' $where $label $lib $retired
+      }
+      if ($e -is [LuaTable]) {
+        $hereName = "p$($p + 1) $key (line $($e.Line))"
+        if ($it[2] -ne $rel) { $hereName = "p$($p + 1) $key (shared)" }
+        foreach ($s in (Get-HomeNames $e)) {
+          if (-not $homes.ContainsKey($s)) { $homes[$s] = New-Object System.Collections.Generic.List[string] }
+          $homes[$s].Add($hereName)
+          if (-not $homePages.ContainsKey($s)) { $homePages[$s] = @{} }
+          $homePages[$s][$p + 1] = $true
         }
       }
-      if ($paddles) {
-        foreach ($key in $paddles.Hash.Keys) {
-          $e = $paddles.Hash[$key]
-          $where = "${rel}:$($e.Line)"
-          $base = $key -replace '^LT\+', ''
-          $label = "$class back button $key"
-          if (-not $PadKey.ContainsKey($base)) { Add-Finding ERROR layout-key $where "$label is not L4/L5/R4/R5 (optionally LT+)" }
-          else { $label = "$label ($(if ($key -like 'LT+*') { 'SHIFT-' })$($PadKey[$base]))" }
-          Test-Entry $e $class 'controller' $where $label $lib $retired
-          if ($e -is [LuaTable]) {
-            foreach ($s in (Get-HomeNames $e)) {
-              if (-not $padHomes.ContainsKey($s)) { $padHomes[$s] = New-Object System.Collections.Generic.List[string] }
-              $padHomes[$s].Add("$key (line $($e.Line))")
-            }
-          }
+    }
+  }
+  if ($paddles) {
+    foreach ($key in $paddles.Hash.Keys) {
+      $e = $paddles.Hash[$key]
+      $where = "${rel}:$($e.Line)"
+      $base = $key -replace '^LT\+', ''
+      $label = "$who back button $key"
+      if (-not $PadKey.ContainsKey($base)) { Add-Finding ERROR layout-key $where "$label is not L4/L5/R4/R5 (optionally LT+)" }
+      else { $label = "$label ($(if ($key -like 'LT+*') { 'SHIFT-' })$($PadKey[$base]))" }
+      Test-Entry $e $class 'controller' $where $label $lib $retired
+      if ($e -is [LuaTable]) {
+        foreach ($s in (Get-HomeNames $e)) {
+          if (-not $padHomes.ContainsKey($s)) { $padHomes[$s] = New-Object System.Collections.Generic.List[string] }
+          $padHomes[$s].Add("$key (line $($e.Line))")
         }
       }
-      foreach ($s in $homes.Keys) {
-        if ($homes[$s].Count -gt 1) { Add-Finding ERROR layout-two-homes "${rel}:$($layout.Line)" "$class controller: '$s' has $($homes[$s].Count) homes: $($homes[$s] -join ', ')" }
+    }
+  }
+  foreach ($s in $homes.Keys) {
+    if ($homes[$s].Count -gt 1) { Add-Finding ERROR layout-two-homes "${rel}:$($layout.Line)" "$who controller: '$s' has $($homes[$s].Count) homes: $($homes[$s] -join ', ')" }
+  }
+  $mirrors = [ordered]@{}
+  foreach ($s in $padHomes.Keys) {
+    if ($padHomes[$s].Count -gt 1) { Add-Finding ERROR layout-two-homes "${rel}:$($layout.Line)" "$who back buttons: '$s' is on $($padHomes[$s].Count) back buttons: $($padHomes[$s] -join ', ')" }
+    if ($homes.ContainsKey($s)) {
+      # Owner rule: a back button may mirror a page-1 spell only. A home on
+      # page 2 or 3 makes the back button a second home.
+      $offPage1 = @($homePages[$s].Keys | Where-Object { $_ -ne 1 })
+      if ($offPage1.Count -gt 0) {
+        Add-Finding ERROR layout-two-homes "${rel}:$($layout.Line)" "$who controller: '$s' is on back button $($padHomes[$s] -join ', ') and has its home on page $($offPage1 -join ', ') ($($homes[$s] -join ', ')); back buttons may mirror page-1 spells only"
+        continue
       }
-      $mirrors = [ordered]@{}
-      foreach ($s in $padHomes.Keys) {
-        if ($padHomes[$s].Count -gt 1) { Add-Finding ERROR layout-two-homes "${rel}:$($layout.Line)" "$class back buttons: '$s' is on $($padHomes[$s].Count) back buttons: $($padHomes[$s] -join ', ')" }
-        if ($homes.ContainsKey($s)) {
-          # Owner rule: a back button may mirror a page-1 spell only. A home on
-          # page 2 or 3 makes the back button a second home.
-          $offPage1 = @($homePages[$s].Keys | Where-Object { $_ -ne 1 })
-          if ($offPage1.Count -gt 0) {
-            Add-Finding ERROR layout-two-homes "${rel}:$($layout.Line)" "$class controller: '$s' is on back button $($padHomes[$s] -join ', ') and has its home on page $($offPage1 -join ', ') ($($homes[$s] -join ', ')); back buttons may mirror page-1 spells only"
-            continue
-          }
-          $pair = "back button $($padHomes[$s] -join ', ') and $($homes[$s] -join ', ')"
-          if (-not $mirrors.Contains($pair)) { $mirrors[$pair] = New-Object System.Collections.Generic.List[string] }
-          $mirrors[$pair].Add("'$s'")
-        }
+      $pair = "back button $($padHomes[$s] -join ', ') and $($homes[$s] -join ', ')"
+      if (-not $mirrors.Contains($pair)) { $mirrors[$pair] = New-Object System.Collections.Generic.List[string] }
+      $mirrors[$pair].Add("'$s'")
+    }
+  }
+  foreach ($pair in $mirrors.Keys) {
+    Add-Finding INFO layout-paddle-mirror "${rel}:$($layout.Line)" "$who controller: $($mirrors[$pair] -join ', ') on $pair (a mirror of a page-1 spell: allowed by the owner)"
+  }
+  $all = @{}
+  foreach ($s in $homes.Keys) { $all[$s] = $homes[$s] }
+  foreach ($s in $padHomes.Keys) { if (-not $all.ContainsKey($s)) { $all[$s] = $padHomes[$s] } }
+  Test-MacroCasts $layout $class 'controller' $all $lib $rel
+}
+
+# A spec's keyboard over the shared one: a spec bar replaces that bar, a
+# stance page replaces that page (false drops it). Mirrors Layout.lua.
+function Merge-Keyboard($base, $over) {
+  if (-not $base) { return $over }
+  $out = [LuaTable]::new($over.Line)
+  foreach ($k in $base.Hash.Keys) { $out.Hash[$k] = $base.Hash[$k] }
+  foreach ($k in $over.Hash.Keys) {
+    if ($k -eq 'stances' -and $over.Hash[$k] -is [LuaTable]) {
+      $st = [LuaTable]::new($over.Hash[$k].Line)
+      $bs = $base.Get('stances')
+      if ($bs -is [LuaTable]) { foreach ($sk in $bs.Hash.Keys) { $st.Hash[$sk] = $bs.Hash[$sk] } }
+      foreach ($sk in $over.Hash[$k].Hash.Keys) {
+        $v = $over.Hash[$k].Hash[$sk]
+        if ($v -is [bool] -and -not $v) { $st.Hash.Remove($sk) } else { $st.Hash[$sk] = $v }
       }
-      foreach ($pair in $mirrors.Keys) {
-        Add-Finding INFO layout-paddle-mirror "${rel}:$($layout.Line)" "$class controller: $($mirrors[$pair] -join ', ') on $pair (a mirror of a page-1 spell: allowed by the owner)"
+      $out.Hash['stances'] = $st
+    } else { $out.Hash[$k] = $over.Hash[$k] }
+  }
+  return $out
+}
+
+# A spec's controller over the shared one: pages[n] replaces page n, paddles replace paddles.
+function Merge-Controller($base, $over) {
+  if (-not $base) { return $over }
+  $out = [LuaTable]::new($over.Line)
+  $bp = $base.Get('pages'); $op = $over.Get('pages')
+  $pages = [LuaTable]::new($over.Line)
+  $n = 3
+  if ($bp -and $bp.Arr.Count -gt $n) { $n = $bp.Arr.Count }
+  for ($i = 1; $i -le $n; $i++) {
+    $pg = $null
+    if ($op) { $pg = Get-Bar $op $i }
+    if (-not $pg -and $bp) { $pg = Get-Bar $bp $i }
+    if ($pg) { [void]$pages.Arr.Add($pg) }
+  }
+  $out.Hash['pages'] = $pages
+  $out.Hash['paddles'] = $base.Get('paddles')
+  if ($over.Has('paddles')) { $out.Hash['paddles'] = $over.Get('paddles') }
+  return $out
+}
+
+# Specs: keys unique, tabs 1-3 unique, exactly one leveling default.
+function Test-Specs($def, [string]$class, [string]$rel) {
+  $specs = $def.Get('specs')
+  $where = "${rel}:$($def.Line)"
+  if (-not ($specs -is [LuaTable]) -or $specs.Arr.Count -eq 0) { Add-Finding ERROR layout-spec $where "$class declares no specs"; return @() }
+  $keys = @{}; $tabs = @{}; $defaults = 0
+  $i = 0
+  foreach ($s in $specs.Arr) {
+    $i++
+    if ($s -isnot [LuaTable]) { Add-Finding ERROR layout-spec $where "$class spec $i is not a table"; continue }
+    $w = "${rel}:$($s.Line)"
+    foreach ($k in $s.Hash.Keys) { if ($SpecFields -notcontains $k) { Add-Finding ERROR layout-spec $w "$class spec ${i}: unknown field '$k'" } }
+    $key = $s.Get('key')
+    if (-not ($key -is [string]) -or $key -eq '') { Add-Finding ERROR layout-spec $w "$class spec $i has no key" }
+    elseif ($keys.ContainsKey($key)) { Add-Finding ERROR layout-spec $w "$class spec ${i}: key '$key' is used twice" }
+    else { $keys[$key] = $true }
+    $name = $s.Get('name')
+    if (-not ($name -is [string]) -or $name -eq '') { Add-Finding ERROR layout-spec $w "$class spec $i has no name" }
+    $tab = $s.Get('tab')
+    if (-not ($tab -is [double]) -or $tab -lt 1 -or $tab -gt 3) { Add-Finding ERROR layout-spec $w "$class spec ${i}: tab must be 1-3 (the talent tab)" }
+    elseif ($tabs.ContainsKey([int]$tab)) { Add-Finding ERROR layout-spec $w "$class spec ${i}: tab $tab is also spec $($tabs[[int]$tab])" }
+    else { $tabs[[int]$tab] = $key }
+    if ($s.Get('default') -eq $true) { $defaults++ }
+    $ctl = $s.Get('controller')
+    if ($ctl -is [LuaTable]) {
+      foreach ($k in $ctl.Hash.Keys) { if (@('pages', 'paddles') -notcontains $k) { Add-Finding ERROR layout-spec $w "$class spec $i controller: unknown field '$k' (pages, paddles)" } }
+    }
+  }
+  if ($defaults -ne 1) { Add-Finding ERROR layout-spec $where "$class has $defaults default specs; mark exactly one (the leveling spec)" }
+  return @($specs.Arr | Where-Object { $_ -is [LuaTable] })
+}
+
+# Layouts/Shared.lua: ns.Layout.RegisterShared({ controller = { pages = { [n] = { ... } } } }),
+# the controller buttons every class gets. Fills $script:SharedPages and
+# checks its entries once (classless: a shared macro must be classless too).
+function Read-SharedLayout($file, $lib, $retired) {
+  $rel = Rel $file.FullName
+  $script:SharedRel = $rel
+  $lit = [LuaLit]::new((ReadText $file.FullName))
+  $m = [regex]::Match($lit.code, '\bLayout\.RegisterShared\s*\(\s*(?=\{)')
+  if (-not $m.Success) { Add-Finding ERROR layout-parse $rel "no ns.Layout.RegisterShared({ ... }) found"; return }
+  $lit.i = $m.Index + $m.Length
+  $def = $null
+  try { $def = $lit.Table() } catch { Add-Finding ERROR layout-parse "${rel}:$($lit.LineAt($m.Index))" "can't read the shared layout: $_"; return }
+  foreach ($k in $def.Hash.Keys) {
+    if ($k -ne 'controller') { Add-Finding ERROR layout-parse "${rel}:$($def.Line)" "shared layout: unknown field '$k' (controller)" }
+  }
+  $ct = $def.Get('controller')
+  $pages = $null
+  if ($ct -is [LuaTable]) { $pages = $ct.Get('pages') }
+  if ($pages -isnot [LuaTable]) { Add-Finding ERROR layout-parse "${rel}:$($def.Line)" "shared layout has no controller.pages"; return }
+  $homes = @{}
+  foreach ($pk in @($pages.Hash.Keys)) {
+    $n = 0
+    if (-not [int]::TryParse(($pk -replace '\.0$', ''), [ref]$n) -or $n -lt 1 -or $n -gt 3) { Add-Finding ERROR layout-parse "${rel}:$($pages.Line)" "shared controller page [$pk] is not 1-3"; continue }
+    $page = $pages.Hash[$pk]
+    if ($page -isnot [LuaTable]) { continue }
+    $script:SharedPages[$n] = $page
+    foreach ($key in $page.Hash.Keys) {
+      if ($key -eq 'title') { continue }
+      $e = $page.Hash[$key]
+      $where = "${rel}:$($e.Line)"
+      $label = "shared controller page $n [$key]"
+      if ($key -notmatch '^(none|LT|RT|LT\+RT) (A|X|B|Y|Up|Down|Left|Right)$') { Add-Finding ERROR layout-key $where "$label is not '<none|LT|RT|LT+RT> <A|X|B|Y|Up|Down|Left|Right>'" }
+      elseif ($key -match '^none (A|X|B|Y)$') { Add-Finding ERROR layout-key $where "${label}: the Top bar's face buttons are fixed by the Gamepad UI" }
+      Test-Entry $e '' 'controller' $where $label $lib $retired
+      foreach ($s in (Get-HomeNames $e)) {
+        if ($homes.ContainsKey($s)) { Add-Finding ERROR layout-two-homes $where "shared controller: '$s' at $($homes[$s]) and page $n $key" }
+        else { $homes[$s] = "page $n $key" }
       }
-      $all = @{}
-      foreach ($s in $homes.Keys) { $all[$s] = $homes[$s] }
-      foreach ($s in $padHomes.Keys) { if (-not $all.ContainsKey($s)) { $all[$s] = $padHomes[$s] } }
-      Test-MacroCasts $layout $class 'controller' $all $lib $rel
     }
   }
 }
+
+# Layouts/<Class>.lua: one ns.Layout.Register("CLASS", { ... }) each. The data
+# must be literal tables (this reader doesn't run Lua).
+function Test-Layout($lib, $retired) {
+  $dir = Join-Path $Addon 'Layouts'
+  $files = @(Get-ChildItem -LiteralPath $dir -Filter '*.lua' -File -ErrorAction SilentlyContinue)
+  if ($files.Count -eq 0) { Add-Finding ERROR layout-parse 'Layouts' "no Layouts\*.lua files"; return }
+  $seen = @{}
+  $script:LayoutClasses = 0
+  $script:SharedPages = @{}
+  $sharedFile = $files | Where-Object { $_.Name -eq 'Shared.lua' } | Select-Object -First 1
+  if ($sharedFile) { Read-SharedLayout $sharedFile $lib $retired }
+  else { Add-Finding ERROR layout-parse 'Layouts' "no Layouts\Shared.lua (the shared controller buttons)" }
+  foreach ($file in $files) {
+    if ($file.Name -eq 'Shared.lua') { continue }
+    $rel = Rel $file.FullName
+    $lit = [LuaLit]::new((ReadText $file.FullName))
+    # The class name is a string, blank in the code copy: read it from the source.
+    $found = 0
+    foreach ($m in [regex]::Matches($lit.code, '\bLayout\.Register\s*\(\s*("[^"]*")\s*,\s*(?=\{)')) {
+      $found++
+      $class = $lit.s.Substring($m.Groups[1].Index + 1, $m.Groups[1].Length - 2)
+      $lit.i = $m.Index + $m.Length
+      $def = $null
+      try { $def = $lit.Table() } catch { Add-Finding ERROR layout-parse "${rel}:$($lit.LineAt($m.Index))" "can't read the $class layout: $_"; continue }
+      if ($seen.ContainsKey($class)) { Add-Finding ERROR layout-parse "${rel}:$($def.Line)" "$class is also registered in $($seen[$class])" }
+      $seen[$class] = $rel
+      $script:LayoutClasses++
+      foreach ($k in $def.Hash.Keys) {
+        if (@('specs', 'keyboard', 'controller') -notcontains $k) { Add-Finding ERROR layout-parse "${rel}:$($def.Line)" "$class layout: unknown field '$k' (specs, keyboard, controller)" }
+      }
+      foreach ($v in $def.Hash.Values) {
+        if ($v -is [LuaExpr]) { Add-Finding ERROR layout-parse "${rel}:$($def.Line)" "$class layout has a non-literal value ($($v.Text)); keep the data literal" }
+      }
+      $specs = Test-Specs $def $class $rel
+      $kb = $def.Get('keyboard')
+      $ct = $def.Get('controller')
+      if ($null -ne $kb) { Test-KeyboardLayout $kb $class $class $rel $lib $retired }
+      if ($null -ne $ct) { Test-ControllerLayout $ct $class $class $rel $lib $retired }
+      # A spec override re-checks the merged layout; a finding the shared
+      # layout already gave is not repeated for each spec.
+      $shared = @{}
+      foreach ($f in $script:Findings) { $shared[$f.Message] = $true }
+      foreach ($s in $specs) {
+        $key = $s.Get('key')
+        $who = "$class ($key)"
+        $before = $script:Findings.Count
+        $skb = $s.Get('keyboard')
+        if ($skb -is [LuaTable]) { Test-KeyboardLayout (Merge-Keyboard $kb $skb) $class $who $rel $lib $retired }
+        $sct = $s.Get('controller')
+        if ($sct -is [LuaTable]) { Test-ControllerLayout (Merge-Controller $ct $sct) $class $who $rel $lib $retired }
+        for ($j = $script:Findings.Count - 1; $j -ge $before; $j--) {
+          if ($shared.ContainsKey($script:Findings[$j].Message.Replace($who, $class))) { $script:Findings.RemoveAt($j) }
+        }
+      }
+    }
+    if ($found -eq 0) { Add-Finding ERROR layout-parse $rel "no ns.Layout.Register(""CLASS"", { ... }) found" }
+  }
+}
+
 
 # A macro home that casts spells with their own home on the same device.
 function Test-MacroCasts($layout, [string]$class, [string]$device, $homes, $lib, [string]$rel) {
@@ -871,7 +1153,7 @@ function Cmd-Rules {
   Test-Layout $lib $data.Retired
   Test-MacroWriters
   Test-LiveGame $lib $data.Retired
-  Say "rules: $($data.Macros.Count) library macros, $($data.Retired.Count) retired names, checked against Modules\Layout.lua"
+  Say "rules: $($data.Macros.Count) library macros, $($data.Retired.Count) retired names, checked against $($script:LayoutClasses) class layouts in Layouts\*.lua"
   return Write-Findings 'rules'
 }
 

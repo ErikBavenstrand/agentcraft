@@ -22,7 +22,7 @@ test("bars: plan agrees with apply (0 changes after apply), kept slot not counte
 end)
 
 test("bars: overflow goes to Action Bars 6-7 when they exist, never drops class spells", function()
-  local env = H.boot({ pet = true, setup = function(W) for i = 1, 20 do table.insert(W.fixture.spells, { name = "Fake Spell " .. i, id = 900000 + i }) end end, loaded = function(e) e.G.CreateFrame("Frame", "MultiBar5"); e.G.CreateFrame("Frame", "MultiBar6") end })
+  local env = H.boot({ pet = true, setup = function(W) for i = 1, 17 do table.insert(W.fixture.spells, { name = "Fake Spell " .. i, id = 900000 + i }) end end, loaded = function(e) e.G.CreateFrame("Frame", "MultiBar5"); e.G.CreateFrame("Frame", "MultiBar6") end })
   Info(env, "with bars 6-7")
   env:slash("spells apply")
   noErrors(env)

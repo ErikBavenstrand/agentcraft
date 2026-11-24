@@ -43,7 +43,7 @@ read_globals = {
   "hooksecurefunc", "issecretvalue", "issecurevariable", "debugstack", "geterrorhandler",
 
   -- C_ namespaces and Enum
-  "C_AddOns", "C_AuctionHouse", "C_ClassTalents", "C_Container", "C_CurrencyInfo", "C_CVar",
+  "C_ActionBar", "C_AddOns", "C_AuctionHouse", "C_ClassTalents", "C_Container", "C_CurrencyInfo", "C_CVar",
   "C_EquipmentSet", "C_FriendList", "C_GamePad", "C_GamepadUI", "C_GuildInfo", "C_Item", "C_Map",
   "C_MountJournal", "C_PetInfo", "C_PetJournal", "C_QuestLog", "C_Reputation", "C_Secrets", "C_SkillInfo", "C_Spell",
   "C_SpellBook", "C_StableInfo", "C_TaxiMap", "C_Timer", "Screenshot", "C_TooltipInfo", "C_TradeSkillUI", "C_Traits",
@@ -87,7 +87,7 @@ read_globals = {
   "GetPetLoyalty", "GetPetTrainingPoints", "GetStablePetInfo", "GetCompanionInfo", "GetNumCompanions",
 
   -- Talents (classic fallbacks; missing on the modern client, always guarded)
-  "GetNumTalents", "GetNumTalentTabs", "GetTalentInfo", "GetTalentTabInfo", "GetUnspentTalentPoints",
+  "GetBonusBarOffset", "GetShapeshiftForm", "GetNumTalents", "GetNumTalentTabs", "GetTalentInfo", "GetTalentTabInfo", "GetUnspentTalentPoints",
   "UnitCharacterPoints",
 
   -- Items, bags, equipment

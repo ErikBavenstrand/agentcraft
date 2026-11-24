@@ -15,6 +15,11 @@
 --   loaded(env) called after the addon files ran, before ADDON_LOADED (to
 --             patch a module, e.g. make its OnEnable raise)
 --   secret    true to start with combat values secret (W.secret; see wow.lua)
+--   level     the player level (default: the fixture's, else 60)
+--   talents   { { name =, points = }, ... } points per talent tab, in tab order
+--             (default: the fixture's; none = no talent config)
+--   bonusOffset  GetBonusBarOffset (the stance page shown; default 0). Change
+--             it later with env.W.bonusOffset
 local wow = require("wow")
 local rules = require("rules")
 
@@ -22,10 +27,22 @@ local H = { rules = rules, wow = wow }
 H.addonDir = nil   -- set by run.lua
 H.addonName = "Agentcraft"
 
+-- Loads harness/fixtures/<name>.lua. A class fixture may be small: fields it
+-- leaves out get defaults, so any class boots. Format: dev/layout-format.md
+-- ("Fixture format").
 local function LoadFixture(name)
   local f = assert(loadfile(H.harnessDir .. "/fixtures/" .. name .. ".lua"))
-  return f()
+  local fx = f()
+  fx.spells = fx.spells or {}
+  fx.professions = fx.professions or {}
+  fx.flyouts = fx.flyouts or {}
+  fx.catalog = fx.catalog or {}
+  fx.items = fx.items or { [6948] = { name = "Hearthstone", spell = "Hearthstone", icon = 134414 } }
+  fx.bags = fx.bags or { [0] = { 6948 } }
+  fx.equipped = fx.equipped or {}
+  return fx
 end
+H.LoadFixture = LoadFixture
 
 local Env = {}
 Env.__index = Env
@@ -118,6 +135,10 @@ function H.boot(opts)
   opts = opts or {}
   local fixture = LoadFixture(opts.fixture or "hunter")
   if opts.pet then fixture.pet = fixture.petData end
+  if opts.level then fixture.level = opts.level end
+  if opts.talents then fixture.talents = opts.talents end
+  if opts.bonusOffset then fixture.bonusOffset = opts.bonusOffset end
+  if opts.professions then fixture.professions = opts.professions end
   local W = wow.NewWorld(fixture)
   local toc = wow.ReadToc(H.addonDir, H.addonName)
   local G = wow.NewEnv(W, toc)

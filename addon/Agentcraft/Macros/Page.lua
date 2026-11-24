@@ -295,6 +295,15 @@ local function Homes(m)
       end
     end
   end
+  -- Bar 1's stance pages (the same plain key in that stance).
+  for _, st in ipairs(kb and kb.stances or {}) do
+    for i, e in pairs(st.entries or {}) do
+      if type(e) == "table" and e.macro == m.name and KB_KEYS[i] then
+        out[#out + 1] = { text = "Keyboard:  " .. KeyWords(KB_KEYS[i]) .. " (" .. st.label .. ")",
+          fn = function() OpenKeyboard(KB_KEYS[i], KB_VIEW[""]) end }
+      end
+    end
+  end
   local pages = class and ns.Layout and ns.Layout.ControllerPages and ns.Layout.ControllerPages(class)
   for set, def in ipairs(pages or {}) do
     local keys = {}

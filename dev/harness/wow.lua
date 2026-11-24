@@ -18,7 +18,7 @@ local M = {}
 
 M.MISSING = {
   -- Gone from modern-based clients (WoW Forever): code must not rely on them.
-  GetItemInfo = true, GetTalentInfo = true, UnitCharacterPoints = true,
+  GetItemInfo = true, GetTalentInfo = true, UnitCharacterPoints = true, GetNumTalentTabs = true, GetTalentTabInfo = true,
   GetSpellBookItemName = true, GetNumSpellTabs = true, GetSpellTabInfo = true,
   GetContainerNumSlots = true, GetContainerItemID = true, GetContainerItemInfo = true,
   -- Moved into C_Spell / C_Item / C_AddOns / C_SpellBook / C_UnitAuras in 11.0.
@@ -85,6 +85,7 @@ function M.NewWorld(fixture)
     unknown = {},     -- auto-stubbed names -> times called
     gamepad = fixture.gamepad ~= false,
     secret = false,   -- true: combat values are secret (see Secret values below)
+    bonusOffset = fixture.bonusOffset or 0, -- GetBonusBarOffset (stance page; 0 = none)
   }
 end
 
@@ -366,14 +367,20 @@ function M.api(W, toc)
   A.IsMounted = function() return false end
   A.GetInventoryItemID = function(unit, slot) if unit == "player" then return (fx.equipped or {})[slot] end end
   A.GetWeaponEnchantInfo = function() return false end
-  -- Indices into fixture.professions, one per listed profession (the client
-  -- returns prof1, prof2, archaeology, fishing, cooking, first aid).
+  -- Indices into fixture.professions in the client's six positions: prof1,
+  -- prof2 (the primaries in fixture order), archaeology, fishing, cooking,
+  -- first aid; a profession the fixture lacks is nil there.
+  local SECONDARY_POS = { Archaeology = 3, Fishing = 4, Cooking = 5, ["First Aid"] = 6 }
   A.GetProfessions = function()
     local p = fx.professions or {}
     if #p == 0 then return nil end
-    local idx = {}
-    for i = 1, #p do idx[i] = i end
-    return unpack(idx, 1, #p)
+    local idx, nextPrimary = {}, 1
+    for i, prof in ipairs(p) do
+      local pos = SECONDARY_POS[prof.name]
+      if not pos and nextPrimary <= 2 then pos = nextPrimary; nextPrimary = nextPrimary + 1 end
+      if pos then idx[pos] = i end
+    end
+    return unpack(idx, 1, 6)
   end
   -- name, icon, skillLevel, maxSkillLevel, numSpells, spellOffset
   A.GetProfessionInfo = function(i)
@@ -700,6 +707,40 @@ function M.api(W, toc)
   }
   A.C_GamepadUI = Lenient(W, "C_GamepadUI", { GetFirstGamepadActionStorageSlotIndex = function() return 181 end })
   A.C_GamePad = Lenient(W, "C_GamePad", { IsEnabled = function() return W.gamepad end })
+
+  -- Talents, WoW Forever style: one trait tree whose node groups are the
+  -- talent tabs (fixture.talents = { { name =, points = }, ... } in tab
+  -- order). The groups come back in reverse order with orderIndex set, so
+  -- code must sort by orderIndex. No talents: no active config.
+  local TREE, GROUP0 = 7001, 9100
+  A.C_ClassTalents = Lenient(W, "C_ClassTalents", {
+    GetActiveConfigID = function() return fx.talents and 4242 or nil end,
+  })
+  A.C_Traits = Lenient(W, "C_Traits", {
+    GetConfigInfo = function(id) if id == 4242 then return { ID = id, treeIDs = { TREE } } end end,
+    GetGroupDisplayInfoByTreeID = function(treeID)
+      if treeID ~= TREE then return {} end
+      local out = {}
+      for i = #(fx.talents or {}), 1, -1 do
+        out[#out + 1] = { groupID = GROUP0 + i, treeID = TREE, orderIndex = i - 1, displayName = fx.talents[i].name, icon = 0 }
+      end
+      return out
+    end,
+    GetGroupCurrencyInfo = function(_, ids)
+      local out = {}
+      for _, id in ipairs(ids or {}) do
+        local t = (fx.talents or {})[id - GROUP0]
+        if t then out[#out + 1] = { traitNodeGroupID = id, currencyInfos = { { traitCurrencyID = 1, quantity = 0, spent = t.points or 0 } } } end
+      end
+      return out
+    end,
+    GetTreeNodes = function() return {} end,
+  })
+
+  -- Bar paging: W.bonusOffset (0 = no stance page). Both the 12.0 C_ActionBar
+  -- name and the old global answer.
+  A.GetBonusBarOffset = function() return W.bonusOffset or 0 end
+  A.C_ActionBar = Lenient(W, "C_ActionBar", { GetBonusBarOffset = A.GetBonusBarOffset })
   A.Constants = setmetatable({
     GamepadActionBarConstants = { NUM_STANDARD_PAGES_PER_GAMEPAD_ACTION_BAR_PAGE_UNIT = 3 },
   }, { __index = function(t, k) local v = AutoStub(W, "Constants." .. k) rawset(t, k, v) return v end })

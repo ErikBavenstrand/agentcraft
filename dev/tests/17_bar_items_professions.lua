@@ -136,7 +136,7 @@ test("side bars: a profession known under two spell IDs gets one home, the spell
   end
   eq(cc["Engineering"], 1, "one Engineering on the controller")
   eq(cc["Cooking"], 1, "one Cooking on the controller")
-  eq(cc["Bait and Tackle"], 1, "Bait and Tackle on the controller catch-all")
+  eq(cc["Bait and Tackle"], 1, "Bait and Tackle on its shared profession slot")
 end)
 
 test("side bars: Apply clears old copies left on side bars; Undo puts them back", function()

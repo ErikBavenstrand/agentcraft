@@ -466,6 +466,19 @@ local function TalentDebug()
   Try("GetUnspentTalentPoints()", GetUnspentTalentPoints)
   Try("GetNumTalentTabs(false,true)", GetNumTalentTabs, false, true)
   if C_ClassTalents then Try("C_ClassTalents.GetActiveConfigID()", C_ClassTalents.GetActiveConfigID) end
+  -- What the layouts' spec detection reads (Layout.TalentTabs: the talent
+  -- tabs' points), the spec it picks, and the stance page the bars show.
+  local L = ns.Layout
+  if L and L.TalentTabs then
+    local tabs, src = L.TalentTabs()
+    local parts = {}
+    for i, t in ipairs(tabs or {}) do parts[i] = tostring(t.name) .. " " .. tostring(t.points) end
+    d["Layout.TalentTabs"] = tabs and (src .. ": " .. table.concat(parts, ", ")) or "nil"
+    local _, class = UnitClass("player")
+    local key, why = L.DetectSpec(class)
+    d["Layout.spec"] = tostring(L.SpecLabel(class)) .. " (detected " .. tostring(key) .. ", " .. tostring(why) .. ")"
+    d["Layout.BonusOffset"] = tostring(L.BonusOffset())
+  end
   return d
 end
 

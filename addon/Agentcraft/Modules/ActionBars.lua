@@ -12,8 +12,10 @@
 -- Click-only side bars, grouped automatically from your spellbook (a spell
 -- on a keyed bar never shows here too: one home per spell):
 --   Action Bar 5 = pet spells, then other class spells not on a keyed bar
---   Action Bar 6 = tracking, then professions, then the camp items in
---   M.SIDE_ITEMS (the Cozy Sleeping Bag), placed only while in your bags
+--   Action Bar 6 = tracking, then professions (your own, in the stable
+--   order of M.ProfessionSpells, the same as the controller's shared
+--   profession slots; then Fishing and Basic Campfire), then the camp items
+--   in M.SIDE_ITEMS (the Cozy Sleeping Bag), placed only while in your bags
 --   Action Bars 7-8 take what doesn't fit, class spells first.
 --   Action Bars 6-8 count only when the client has them. Without them,
 --   everything shares Action Bar 5: camp items, professions, then tracking,
@@ -160,6 +162,45 @@ local SIDE_EXTRAS = { "Find Minerals", "Find Herbs" }
 for _, name in ipairs(PROFESSIONS) do table.insert(SIDE_EXTRAS, name) end
 for name in pairs(PET_SPELLS) do table.insert(SIDE_EXTRAS, name) end
 
+-- The profession lists of Layout.lua (the stable profession order).
+local function ProfData() return ns.Layout and ns.Layout.PROFESSIONS end
+do
+  local P = ProfData()
+  local seen = {}
+  for _, n in ipairs(SIDE_EXTRAS) do seen[n] = true end
+  for _, list in ipairs(P and { P.primary, P.secondary, P.fishing, P.utility } or {}) do
+    for _, n in ipairs(list) do
+      if not seen[n] then seen[n] = true; table.insert(SIDE_EXTRAS, n) end
+      if not PROFESSION_RANK[n] then PROFESSION_RANK[n] = #PROFESSIONS + 1 end
+    end
+  end
+end
+
+-- Your professions as GetProfessions lists them (client: primary 1,
+-- primary 2, archaeology, fishing, cooking, first aid; empty ones are nil):
+-- { { name =, spells = { { name =, id = }, ... } }, ... }, the castable
+-- spellbook entries of each.
+local function ProfessionLines()
+  local out = {}
+  if not (GetProfessions and GetProfessionInfo and C_SpellBook and C_SpellBook.GetSpellBookItemInfo) then return out end
+  local bank = Enum.SpellBookSpellBank.Player
+  local list = { GetProfessions() }
+  for p = 1, select("#", GetProfessions()) do
+    if list[p] then
+      local name, _, _, _, numSpells, offset = GetProfessionInfo(list[p])
+      local line = { name = name, spells = {} }
+      for i = (offset or 0) + 1, (offset or 0) + (numSpells or 0) do
+        local ok, item = pcall(C_SpellBook.GetSpellBookItemInfo, i, bank)
+        if ok and item and item.spellID and item.name and not item.isPassive then
+          line.spells[#line.spells + 1] = { name = item.name, id = item.spellID }
+        end
+      end
+      out[#out + 1] = line
+    end
+  end
+  return out
+end
+
 -- The known map plus profession spells, which live outside the class skill
 -- lines. Returns name -> ID and the set of names from your professions.
 -- One ID per name: WoW Forever lists some professions under an old and a
@@ -177,24 +218,84 @@ local function SideKnown(known)
       if fromProfession then prof[name] = true end
     end
   end
-  if GetProfessions and GetProfessionInfo and C_SpellBook and C_SpellBook.GetSpellBookItemInfo then
-    local bank = Enum.SpellBookSpellBank.Player
-    local list = { GetProfessions() }
-    for p = 1, select("#", GetProfessions()) do
-      if list[p] then
-        local _, _, _, _, numSpells, offset = GetProfessionInfo(list[p])
-        for i = (offset or 0) + 1, (offset or 0) + (numSpells or 0) do
-          local ok, item = pcall(C_SpellBook.GetSpellBookItemInfo, i, bank)
-          if ok and item and item.spellID and item.name and not item.isPassive then Add(item.name, item.spellID, true) end
-        end
-      end
-    end
+  for _, line in ipairs(ProfessionLines()) do
+    for _, s in ipairs(line.spells) do Add(s.name, s.id, true) end
   end
   for _, name in ipairs(SIDE_EXTRAS) do
     if not ids[name] then Add(name, LookupKnown(name)) end
   end
   return ids, prof
 end
+
+-- Your profession spells in the stable order of Layout.PROFESSIONS, for the
+-- shared { profession = n } controller slots and Action Bar 6:
+-- { { name =, id = }, ... }. ids: the name -> ID map to take IDs from
+-- (SideKnown's; built when nil), so a profession known under two IDs gets
+-- the same one everywhere.
+--   1-2. Each primary's own spell (the one named like the profession; else
+--        its first spell that is not a gathering/utility spell), in the
+--        order GetProfessions lists them, then primaries known only by name.
+--   3-5. Cooking, First Aid, fishing helpers (Bait and Tackle).
+--   6+.  Every other spell of your professions: Layout.PROFESSIONS.utility
+--        order (Find Minerals, Find Herbs, Smelting, Disenchant...), then
+--        alphabetically.
+-- Fishing and Basic Campfire never count (shared homes of their own).
+local function ProfessionSpells(ids)
+  local P = ProfData()
+  if not P then return {} end
+  ids = ids or (SideKnown(KnownSpells()))
+  local out, seen = {}, {}
+  local function Add(name, id)
+    if not name or seen[name] or P.skip[name] then return end
+    id = ids[name] or id or LookupKnown(name)
+    if not id then return end
+    seen[name] = true
+    out[#out + 1] = { name = name, id = id }
+  end
+  local utilRank = {}
+  for i, n in ipairs(P.utility) do utilRank[n] = i end
+  local lines, byName = ProfessionLines(), {}
+  for _, l in ipairs(lines) do if l.name then byName[l.name] = l end end
+  local primaries = {}
+  for _, l in ipairs(lines) do if l.name and not P.lines[l.name] then primaries[#primaries + 1] = l end end
+  -- Clients without GetProfessions: a primary you know by its own spell.
+  for _, n in ipairs(P.primary) do
+    if not byName[n] and ids[n] then primaries[#primaries + 1] = { name = n, spells = { { name = n, id = ids[n] } } } end
+  end
+  local rest = {}
+  for _, l in ipairs(primaries) do
+    local main
+    for _, s in ipairs(l.spells) do if s.name == l.name then main = s; break end end
+    -- WoW Forever lists Mining's own spell (1240973) outside the Mining
+    -- skill line, which holds only Find Minerals and Smelting; take it by
+    -- name so Mining keeps its primary slot (owner's capture, 0.35.0).
+    if not main and ids[l.name] then main = { name = l.name, id = ids[l.name] } end
+    if not main then
+      for _, s in ipairs(l.spells) do if not utilRank[s.name] and not P.skip[s.name] then main = s; break end end
+    end
+    if main then Add(main.name, main.id) end
+    for _, s in ipairs(l.spells) do if s.name ~= (main and main.name) then rest[#rest + 1] = s end end
+  end
+  local function Line(name)
+    local l = byName[name]
+    Add(name, nil)
+    for _, s in ipairs(l and l.spells or {}) do if s.name == name then Add(s.name, s.id) else rest[#rest + 1] = s end end
+  end
+  Line("Cooking")
+  Line("First Aid")
+  for _, s in ipairs(byName["Fishing"] and byName["Fishing"].spells or {}) do Add(s.name, s.id) end
+  for _, n in ipairs(P.fishing) do Add(n, nil) end
+  for _, s in ipairs(byName["Archaeology"] and byName["Archaeology"].spells or {}) do rest[#rest + 1] = s end
+  for _, n in ipairs(P.utility) do rest[#rest + 1] = { name = n } end
+  local function Rank(s) return utilRank[s.name] or 99 end
+  table.sort(rest, function(a, b)
+    if Rank(a) ~= Rank(b) then return Rank(a) < Rank(b) end
+    return a.name < b.name
+  end)
+  for _, s in ipairs(rest) do Add(s.name, s.id) end
+  return out
+end
+M.ProfessionSpells = ProfessionSpells
 
 -- Items ------------------------------------------------------------------
 
@@ -349,8 +450,54 @@ local function InstallText(name)
   return "Waiting · install " .. tostring(name) .. " on the Macros page"
 end
 
--- Slots Apply and Undo manage: bars 1-5, plus the given Action Bars 6-8.
-local function ManagedSlots(extra)
+-- Every keyed entry of a profile: bars 1, 2 and 4, then Bar 1's stance
+-- pages. fn(entry) runs once per entry.
+local function EachKeyed(profile, fn)
+  for _, bar in ipairs(LAYOUT_BARS) do
+    for _, entry in pairs(profile[bar] or {}) do fn(entry) end
+  end
+  for _, st in ipairs(profile.stances or {}) do
+    for _, entry in pairs(st.entries or {}) do fn(entry) end
+  end
+end
+
+-- Bar 1's stance pages (bonus bars, slots 73-120) that Apply manages: the
+-- profile's, plus the ones an earlier Apply filled (charDB.stanceBars), so
+-- it clears a page the spec no longer has. { first =, key =, label =,
+-- offset =, entries = } by offset; an old page has no entries.
+local function StanceOffset(first) return (first - 72) / 12 + 1 end
+local function UsedStanceBars(profile)
+  local list, seen = {}, {}
+  for _, st in ipairs(profile and profile.stances or {}) do list[#list + 1] = st; seen[st.first] = true end
+  for first in pairs(M.charDB.stanceBars or {}) do
+    first = tonumber(first)
+    if first and not seen[first] then
+      list[#list + 1] = { first = first, offset = StanceOffset(first), key = "old" .. first,
+        label = "Stance page " .. StanceOffset(first), entries = {}, old = true }
+    end
+  end
+  table.sort(list, function(a, b) return a.first < b.first end)
+  return list
+end
+
+-- Stance pages the backup covers, for Undo.
+local function SavedStanceBars()
+  local list = {}
+  for first in pairs(M.charDB.backup and M.charDB.backup.stance or {}) do
+    if tonumber(first) then list[#list + 1] = { first = tonumber(first) } end
+  end
+  table.sort(list, function(a, b) return a.first < b.first end)
+  return list
+end
+
+-- First slot offset of the stance page (bonus bar) a slot is on, or nil.
+local function StanceBarOf(slot)
+  if slot > 72 and slot <= 120 then return 72 + math.floor((slot - 73) / 12) * 12 end
+end
+
+-- Slots Apply and Undo manage: bars 1-5, plus the given Action Bars 6-8
+-- and Bar 1 stance pages.
+local function ManagedSlots(extra, stances)
   local slots = {}
   for bar = 1, 4 do
     for i = 1, 12 do table.insert(slots, BAR_OFFSET[bar] + i) end
@@ -358,6 +505,9 @@ local function ManagedSlots(extra)
   for i = 1, 12 do table.insert(slots, SIDE_BAR + i) end
   for _, b in ipairs(extra or {}) do
     for i = 1, 12 do table.insert(slots, b.first + i) end
+  end
+  for _, st in ipairs(stances or {}) do
+    for i = 1, 12 do table.insert(slots, st.first + i) end
   end
   return slots
 end
@@ -465,25 +615,27 @@ end
 -- not in your bags (a waiting slot; nothing is placed there).
 local function SideBars(profile, known)
   local used = {}
-  for _, bar in ipairs(LAYOUT_BARS) do
-    for _, entry in pairs(profile[bar] or {}) do
-      -- Only the spell a home picked is placed; the alternatives it skipped
-      -- still need a home. A macro home places its spell and covers = { ... }.
-      local item = ResolveEntry(entry, known)
-      if item.kind == "spell" and item.name then used[item.name] = true end
-      if item.kind == "macro" then
-        if entry[1] then used[entry[1]] = true end
-        for _, n in ipairs(entry.covers or {}) do used[n] = true end
-      end
-      -- { "Better", "Lower rank", upgrade = true }: the lower one needs no home.
-      if entry.upgrade then
-        for _, n in ipairs(entry) do used[n] = true end
-      end
+  EachKeyed(profile, function(entry)
+    -- Only the spell a home picked is placed; the alternatives it skipped
+    -- still need a home. A macro home places its spell and covers = { ... }.
+    local item = ResolveEntry(entry, known)
+    if item.kind == "spell" and item.name then used[item.name] = true end
+    if item.kind == "macro" then
+      if entry[1] then used[entry[1]] = true end
+      for _, n in ipairs(entry.covers or {}) do used[n] = true end
     end
-  end
+    -- { "Better", "Lower rank", upgrade = true }: the lower one needs no home.
+    if entry.upgrade then
+      for _, n in ipairs(entry) do used[n] = true end
+    end
+  end)
   local ids, fromProfession = SideKnown(known)
   local function Rank(name) return PetRank(name, ids[name]) or 99 end
-  local function ProfRank(name) return PROFESSION_RANK[name] or 99 end
+  -- Professions in the stable order the controller's profession slots use
+  -- (ProfessionSpells), then the rest (Fishing, Basic Campfire...) by PROFESSIONS.
+  local order = {}
+  for i, s in ipairs(ProfessionSpells(ids)) do order[s.name] = i end
+  local function ProfRank(name) return order[name] or (100 + (PROFESSION_RANK[name] or 99)) end
   local pet, other, tracking, prof = {}, {}, {}, {}
   for name in pairs(ids) do
     if not used[name] and not IGNORE[name] then
@@ -500,11 +652,9 @@ local function SideBars(profile, known)
   -- Camp items follow the professions, so they give up their slot first.
   -- One home per device: an item a keyed bar or the Alt bar names is skipped.
   local onKeys = {}
-  for _, bar in ipairs(LAYOUT_BARS) do
-    for _, entry in pairs(profile[bar] or {}) do
-      if type(entry) == "table" and entry.item then onKeys[entry.item] = true end
-    end
-  end
+  EachKeyed(profile, function(entry)
+    if type(entry) == "table" and entry.item then onKeys[entry.item] = true end
+  end)
   for _, entry in pairs(profile[3] or M.utility) do
     if type(entry) == "table" then
       for _, n in ipairs(entry) do onKeys[n] = true end
@@ -637,7 +787,8 @@ local function Apply()
   local bags = BagItems()
   local side, ids, extra, dropped, extraBars, items = SideBars(profile, known)
   local used = UsedExtraBars(extra, extraBars)
-  local slots = ManagedSlots(used)
+  local stances = UsedStanceBars(profile)
+  local slots = ManagedSlots(used, stances)
   local utility = profile[3] or M.utility
   -- Before the backup and the record change: what is ours is decided on
   -- the bars as they are now.
@@ -654,16 +805,20 @@ local function Apply()
   -- copy cleared from a bar Apply doesn't manage joins it on its own
   -- (backup.loose). Slots holding something undo can't put back, and Alt
   -- keys outside the layout that hold your own things, are left alone.
+  -- A stance page joins the backup the same way, the first time Apply
+  -- manages it (backup.stance lists the pages it covers).
   local first = not M.charDB.backup
   local backup = M.charDB.backup or {}
   local covered = backup.extra or {}
+  local stanceCovered = backup.stance or {}
   local keep, kept = {}, 0
   for _, slot in ipairs(slots) do
     local t, id = GetActionInfo(slot)
     if t and not Restorable(t) then keep[slot] = true; kept = kept + 1 end
     if free[slot] then keep[slot] = true end
     local bar = ExtraBarOf(slot)
-    if t and (first or (bar and not covered[bar])) then
+    local sbar = StanceBarOf(slot)
+    if t and (first or (bar and not covered[bar]) or (sbar and not stanceCovered[sbar])) then
       backup[slot] = { t, id, t == "macro" and GetActionText(slot) or nil }
     end
   end
@@ -681,8 +836,16 @@ local function Apply()
   for offset in pairs(M.charDB.extraBars or {}) do extraUsed[offset] = true end
   for _, b in ipairs(used) do covered[b.first] = true; extraUsed[b.first] = true end
   backup.extra = covered
+  local stanceUsed = {}
+  for _, st in ipairs(stances) do
+    stanceCovered[st.first] = true
+    if not st.old then stanceUsed[st.first] = true end
+  end
+  backup.stance = stanceCovered
   M.charDB.backup = backup
   M.charDB.extraBars = next(extraUsed) and extraUsed or nil
+  -- An old page is cleared now and needs no managing after this Apply.
+  M.charDB.stanceBars = next(stanceUsed) and stanceUsed or nil
 
   ClearCursor()
   for _, slot in ipairs(slots) do
@@ -696,6 +859,19 @@ local function Apply()
     for i = 1, 12 do
       local entry = profile[bar] and profile[bar][i]
       local slot = BAR_OFFSET[bar] + i
+      if entry and not keep[slot] then
+        local item = ResolveEntry(entry, known)
+        if item.missing then table.insert(missing, item.missing)
+        elseif C and C.Place then C.Place(slot, item)
+        elseif item.kind == "spell" then PlaceSpell(slot, item.id) end
+      end
+    end
+  end
+  -- Bar 1's stance pages go into their bonus bar slots.
+  for _, st in ipairs(stances) do
+    for i = 1, 12 do
+      local entry = st.entries[i]
+      local slot = st.first + i
       if entry and not keep[slot] then
         local item = ResolveEntry(entry, known)
         if item.missing then table.insert(missing, item.missing)
@@ -765,7 +941,7 @@ local function Undo()
   if not backup then return ns.Print("nothing to undo.") end
   ClearCursor()
   local lost = {}
-  local slots = ManagedSlots(SavedExtraBars())
+  local slots = ManagedSlots(SavedExtraBars(), SavedStanceBars())
   local listed = {}
   for _, slot in ipairs(slots) do listed[slot] = true end
   -- Stale copies Apply cleared from bars it doesn't manage go back too.
@@ -788,6 +964,7 @@ local function Undo()
   end
   M.charDB.backup = nil
   M.charDB.extraBars = nil
+  M.charDB.stanceBars = nil
   M.charDB.placed = nil
   ns.Print("bars restored.")
   if #lost > 0 then ns.Print("couldn't put back: " .. table.concat(lost, ", ") .. ".") end
@@ -801,6 +978,8 @@ local function Show()
   if not profile then return ns.Print("no profile for " .. class .. " yet.") end
   local known = KnownSpells()
   local bags = BagItems()
+  local spec = ns.Layout and ns.Layout.SpecLabel(class)
+  if spec then print("|cffffd100Spec:|r " .. spec .. "  (/ac spec to change)") end
   for _, bar in ipairs(LAYOUT_BARS) do
     local mod = BAR_MOD[bar]
     print("|cffffd100Bar " .. bar .. (mod and (" (" .. mod .. ")") or "") .. "|r")
@@ -810,6 +989,17 @@ local function Show()
         local item = ResolveEntry(entry, known)
         local what = item.missing and ("|cff888888" .. item.missing .. " (not learned)|r") or item.name
         print("  " .. (mod and (mod .. "+") or "") .. KEY_LABELS[i] .. " -> " .. what)
+      end
+    end
+  end
+  for _, st in ipairs(profile.stances or {}) do
+    print("|cffffd100Bar 1 in " .. st.label .. " (bonus bar " .. st.offset .. ", slots " .. (st.first + 1) .. "-" .. (st.first + 12) .. ")|r")
+    for i = 1, 12 do
+      local entry = st.entries[i]
+      if entry then
+        local item = ResolveEntry(entry, known)
+        local what = item.missing and ("|cff888888" .. item.missing .. " (not learned)|r") or item.name
+        print("  " .. KEY_LABELS[i] .. " -> " .. what)
       end
     end
   end
@@ -870,6 +1060,46 @@ local ROWS = {
 local SIDE_FIRST_ROW = 5
 local KEYED_ROW = { [1] = true, [2] = true, [4] = true } -- filled from the layout (3 = utilities)
 
+-- A keyed home's plan entry fields (bars 1, 2, 4 and the stance pages).
+local function KeyedEntry(e, entry, known)
+  local item = ResolveEntry(entry, known)
+  e.item = item
+  -- A missing home keeps its entry's form: item, macro or spell.
+  e.kind = item.kind or ((entry.item or entry.utility) and "item")
+    or (item.macro and "macro") or "spell"
+  e.id = item.id or (not item.missing and item.name) or nil
+  e.name = item.name or item.missing
+  e.macro = entry.macro -- display only: a macro home shows its plain spell until installed
+  -- Display only: what a waiting home can show as its icon.
+  if entry.macro then e.needs = entry[1]
+  elseif entry.item then e.cands = { entry.item }
+  elseif entry.utility then
+    local spec = M.utility and M.utility[entry.utility]
+    e.cands = type(spec) == "table" and spec or nil
+  end
+end
+
+-- Sets e.state from what the slot holds now and counts it in the plan.
+local function PlanState(plan, e)
+  local cur, curID = GetActionInfo(e.slot)
+  local C = ns.modules.controller
+  if cur and not Restorable(cur) then e.state = "kept"; plan.kept = plan.kept + 1
+  elseif e.free then e.state = "free"
+  elseif not e.kind then e.state = cur and "clear" or "empty"
+  elseif not e.id then e.state = "missing"; e.clears = cur ~= nil
+  elseif e.item and C and C.Same then e.state = C.Same(e.slot, e.item) and "same" or "new"
+  elseif cur == e.kind and curID == e.id then e.state = "same"
+  else e.state = "new" end
+  if e.state == "new" or e.state == "clear" or e.clears then plan.changes = plan.changes + 1 end
+  if e.state == "missing" then
+    if e.kind == "spell" then plan.spellsMissing = plan.spellsMissing + 1
+    elseif e.kind == "macro" then plan.macrosMissing = plan.macrosMissing + 1
+    else plan.itemsMissing = plan.itemsMissing + 1 end
+  end
+end
+
+-- plan.stances: Bar 1's stance pages, { key =, label =, offset =, first =,
+-- [1..12] = entries } by offset (an old page the spec dropped is cleared).
 function M.Plan()
   local profile, class = Profile()
   if not profile then return nil, class end
@@ -880,7 +1110,7 @@ function M.Plan()
   local utility = profile[3] or M.utility
   local stale = StaleSlots(side, extra, used)
   local plan = { changes = #stale, spellsMissing = 0, itemsMissing = 0, macrosMissing = 0, kept = 0,
-    dropped = dropped, rows = {}, hidden = {}, stale = stale }
+    dropped = dropped, rows = {}, hidden = {}, stale = stale, stances = {} }
   local extraOf = {}
   for b, bar in ipairs(extraBars) do extraOf[bar.first] = extra[b] end
   for r, row in ipairs(ROWS) do plan.rows[r] = row end
@@ -895,23 +1125,7 @@ function M.Plan()
       local e = { slot = row.first + i }
       if KEYED_ROW[r] then
         local entry = profile[r] and profile[r][i]
-        if entry then
-          local item = ResolveEntry(entry, known)
-          e.item = item
-          -- A missing home keeps its entry's form: item, macro or spell.
-          e.kind = item.kind or ((entry.item or entry.utility) and "item")
-            or (item.macro and "macro") or "spell"
-          e.id = item.id or (not item.missing and item.name) or nil
-          e.name = item.name or item.missing
-          e.macro = entry.macro -- display only: a macro home shows its plain spell until installed
-          -- Display only: what a waiting home can show as its icon.
-          if entry.macro then e.needs = entry[1]
-          elseif entry.item then e.cands = { entry.item }
-          elseif entry.utility then
-            local spec = M.utility and M.utility[entry.utility]
-            e.cands = type(spec) == "table" and spec or nil
-          end
-        end
+        if entry then KeyedEntry(e, entry, known) end
       elseif r == 3 then
         local entry = utility[i]
         if AltMacro(entry) then
@@ -938,24 +1152,21 @@ function M.Plan()
           e.kind, e.id, e.name = "spell", ids[name], name
         end
       end
-      local cur, curID = GetActionInfo(e.slot)
-      local C = ns.modules.controller
-      if cur and not Restorable(cur) then e.state = "kept"; plan.kept = plan.kept + 1
-      elseif e.free then e.state = "free"
-      elseif not e.kind then e.state = cur and "clear" or "empty"
-      elseif not e.id then e.state = "missing"; e.clears = cur ~= nil
-      elseif e.item and C and C.Same then e.state = C.Same(e.slot, e.item) and "same" or "new"
-      elseif cur == e.kind and curID == e.id then e.state = "same"
-      else e.state = "new" end
-      if e.state == "new" or e.state == "clear" or e.clears then plan.changes = plan.changes + 1 end
-      if e.state == "missing" then
-        if e.kind == "spell" then plan.spellsMissing = plan.spellsMissing + 1
-        elseif e.kind == "macro" then plan.macrosMissing = plan.macrosMissing + 1
-        else plan.itemsMissing = plan.itemsMissing + 1 end
-      end
+      PlanState(plan, e)
       entries[i] = e
     end
     plan[r] = entries
+  end
+  for _, st in ipairs(UsedStanceBars(profile)) do
+    local page = { key = st.key, label = st.label, offset = st.offset, first = st.first, old = st.old }
+    for i = 1, 12 do
+      local e = { slot = st.first + i, i = i, stance = st.key, stanceLabel = st.label }
+      local entry = st.entries[i]
+      if entry then KeyedEntry(e, entry, known) end
+      PlanState(plan, e)
+      page[i] = e
+    end
+    plan.stances[#plan.stances + 1] = page
   end
   return plan, class
 end
@@ -1036,6 +1247,15 @@ local function SlotText(slot)
   end
   for _, b in ipairs(EXTRA_BARS) do
     if slot > b.first and slot <= b.first + 12 then return b.label .. " · button " .. (slot - b.first) end
+  end
+  local first = StanceBarOf(slot)
+  if first then
+    local label = "stance page " .. StanceOffset(first)
+    local _, class = UnitClass("player")
+    for _, st in ipairs(ns.Layout and ns.Layout.StancePages(class) or {}) do
+      if st.first == first then label = st.label .. " page" end
+    end
+    return "Action Bar 1 · " .. label .. " · button " .. (slot - first)
   end
   return "Action slot " .. slot
 end
@@ -1131,8 +1351,28 @@ local function Gather(page)
       end
     end
   end
+  -- Bar 1's stance pages (not the old ones Apply only clears), and the one
+  -- the Plain layer previews: page.stance, else the stance you are in now.
+  d.stances = {}
+  for _, st in ipairs(d.plan and d.plan.stances or {}) do
+    for i = 1, 12 do d.slots[st[i].slot] = st[i] end
+    if not st.old then d.stances[#d.stances + 1] = st end
+  end
+  if page.stance == nil and #d.stances > 0 then
+    local off = ns.Layout and ns.Layout.BonusOffset and ns.Layout.BonusOffset()
+    page.stance = "none"
+    for _, st in ipairs(d.stances) do if st.offset == off then page.stance = st.key end end
+  end
+  for _, st in ipairs(d.stances) do if st.key == page.stance then d.stancePage = st end end
   page.data = d
   return d
+end
+
+-- The Plain layer's slot for key index i (1-12): the previewed stance page's
+-- bonus bar slot, else Bar 1's own.
+local function PlainSlot(page, i)
+  local st = page.data and page.data.stancePage
+  return st and (st.first + i) or i
 end
 
 -- One key on one layer: now, after, and how Apply changes it.
@@ -1156,6 +1396,18 @@ local function Cell(page, base, li)
     c.oldName = NameOf(nowD, cur)
   end
   c.slot, c.pet = SlotOf(cmd), PetOf(cmd)
+  -- Plain keys fire Action Bar 1, which the game pages by stance, form or
+  -- stealth: with a stance page previewed, the key shows that page's slot.
+  if d.stancePage and c.slot and c.slot >= 1 and c.slot <= 12 then
+    c.slot, c.stance = d.stancePage.first + c.slot, d.stancePage
+    local nowSlot = SlotOf(cur)
+    if nowSlot and nowSlot >= 1 and nowSlot <= 12 then
+      local sd = UI.DescribeSlot(d.stancePage.first + nowSlot)
+      local empty = sd.name == "Empty slot"
+      c.now = { icon = sd.icon, name = empty and "Empty" or NameOf(sd, "?"), kind = sd.kind, tip = sd.tip,
+        state = empty and "empty" or "same" }
+    end
+  end
   local e = c.slot and d.ab and d.slots[c.slot] or nil
   c.entry = e
   c.after = e and AfterOfEntry(e) or AfterOfCommand(cmd)
@@ -1334,6 +1586,7 @@ local function RestoreButtons()
 end
 
 local SavedState -- defined with the page (below)
+local StanceInspect -- defined with the page (below)
 
 -- Picture <-> List: shows the same key (or side slot) in the other mode,
 -- focused, so every Inspector has a link the D-pad can step onto.
@@ -1388,6 +1641,31 @@ local function InspectCell(pane, page, c)
     layers[l] = { label = LAYERS[l].label, icon = vv.icon, name = (vv.state == "unbound" and NOT_BOUND_TEXT or (vv.name or ""):gsub(" %(or better%)$", "")), color = NameColor(cc, after) }
   end
   pane:Layers(layers)
+  -- A plain key on a class whose Bar 1 pages by stance, form or stealth:
+  -- what the key casts on each page ("Battle: Overpower, Defensive: Revenge").
+  local d = page.data
+  if c.layer == 1 and c.slot and #(d.stances or {}) > 0 then
+    local i = c.stance and (c.slot - c.stance.first) or c.slot
+    if i >= 1 and i <= 12 then
+      pane:Section(KeyLabel(c.base) .. " in each stance")
+      local rows = {}
+      local function Row(label, e, slot)
+        local vv
+        if after and e then vv = AfterOfEntry(e)
+        else
+          local sd = UI.DescribeSlot(slot)
+          local empty = sd.name == "Empty slot"
+          vv = { icon = sd.icon, name = empty and "Empty" or sd.name, state = empty and "empty" or "same" }
+        end
+        local color = (vv.state == "waiting" and UI.C.MISSING)
+          or ((vv.state == "empty" or vv.state == "clear") and UI.C.DISABLED) or nil
+        rows[#rows + 1] = { label = label, icon = vv.icon, name = vv.name, color = color }
+      end
+      Row("No stance", d.slots[i], i)
+      for _, st in ipairs(d.stances) do Row(st.label, st[i], st.first + i) end
+      pane:Layers(rows)
+    end
+  end
   pane:Text(SpellText(v))
   local e = c.entry
   if e and e.macro and after and c.after.kind == "spell" then
@@ -1727,13 +2005,15 @@ local function FillPicture(page)
   for _, s in ipairs(page.capList) do FillCap(page, s) end
   local li = ShownLayer(page)
   local after = page.after == 2
-  page.barTitle:SetText(LAYERS[li].title .. (LAYERS[li].mod and (" · hold " .. LAYERS[li].mod) or " · no modifier")
+  local d = page.data
+  local stance = li == 1 and d.stancePage or nil
+  page.barTitle:SetText(LAYERS[li].title .. (stance and (" · " .. stance.label .. " page")
+      or (LAYERS[li].mod and (" · hold " .. LAYERS[li].mod) or " · no modifier"))
     .. (PreviewLayer(page) and "  (preview)" or ""))
   local K = Keybinds()
   local keys = K and K.KEYS or {}
-  local d = page.data
   for i, s in ipairs(page.barSlots) do
-    local slot = BAR_OFFSET[LAYERS[li].bar] + i
+    local slot = li == 1 and PlainSlot(page, i) or (BAR_OFFSET[LAYERS[li].bar] + i)
     local e = d.ab and d.slots[slot]
     local v
     if after and e then v = AfterOfEntry(e) else local dd = UI.DescribeSlot(slot); v = { icon = dd.icon, state = "same" } end
@@ -2078,9 +2358,10 @@ end
 -- "Shift+E" for a keyed slot, "Action Bar 5 · 3" for a side slot.
 local function SlotKeyLabel(e)
   local li = e.r and LAYER_OF_BAR[e.r]
-  if li then
+  if li or e.stance then
     local K = Keybinds()
     local key = K and K.KEYS and K.KEYS[e.i]
+    if key and e.stance then return e.stanceLabel .. ": " .. key end
     if key then return Chord(key, li) end
   end
   return (SlotText(e.slot):gsub(" · button ", " · "))
@@ -2099,27 +2380,31 @@ local function Groups(page)
   local place, clear, keys, unbind, waiting = {}, {}, {}, {}, {}
   local ids = {}
   if d.ab and d.plan then
-    for r = 1, #d.plan.rows do
-      for i = 1, 12 do
-        local e = d.plan[r][i]
-        local now = UI.DescribeSlot(e.slot)
-        local nowName = now.name == "Empty slot" and "Empty" or now.name
-        if e.state == "new" then
-          local a = AfterOfEntry(e)
-          place[#place + 1] = { key = SlotKeyLabel(e), nowIcon = now.icon, nowName = nowName,
-            afterIcon = a.icon, afterName = a.name, color = UI.C.ADDED,
-            note = e.macro and e.kind == "spell" and "plain spell until the macro is installed" or nil }
-        elseif e.state == "clear" or e.clears then
-          clear[#clear + 1] = { key = SlotKeyLabel(e), nowIcon = now.icon, nowName = nowName,
-            afterName = "Empty", color = UI.C.REMOVED, note = e.clears and ("waits for " .. (e.name or "?")) or nil }
-        elseif e.state == "missing" then
-          waiting[#waiting + 1] = e.name
-        end
-        if e.state == "new" or e.state == "clear" or e.clears then
-          ids[#ids + 1] = "side:" .. e.slot
-          ids[#ids + 1] = "sidelist:" .. e.slot
-        end
+    local function Visit(e)
+      local now = UI.DescribeSlot(e.slot)
+      local nowName = now.name == "Empty slot" and "Empty" or now.name
+      if e.state == "new" then
+        local a = AfterOfEntry(e)
+        place[#place + 1] = { key = SlotKeyLabel(e), nowIcon = now.icon, nowName = nowName,
+          afterIcon = a.icon, afterName = a.name, color = UI.C.ADDED,
+          note = e.macro and e.kind == "spell" and "plain spell until the macro is installed" or nil }
+      elseif e.state == "clear" or e.clears then
+        clear[#clear + 1] = { key = SlotKeyLabel(e), nowIcon = now.icon, nowName = nowName,
+          afterName = "Empty", color = UI.C.REMOVED, note = e.clears and ("waits for " .. (e.name or "?")) or nil }
+      elseif e.state == "missing" then
+        waiting[#waiting + 1] = e.name
       end
+      if e.state == "new" or e.state == "clear" or e.clears then
+        ids[#ids + 1] = "side:" .. e.slot
+        ids[#ids + 1] = "sidelist:" .. e.slot
+      end
+    end
+    for r = 1, #d.plan.rows do
+      for i = 1, 12 do Visit(d.plan[r][i]) end
+    end
+    -- Bar 1's stance pages (bonus bar slots).
+    for _, st in ipairs(d.plan.stances or {}) do
+      for i = 1, 12 do Visit(st[i]) end
     end
     -- Old copies on Action Bars 6-8 that Apply no longer fills.
     for _, s in ipairs(d.plan.stale or {}) do
@@ -2187,6 +2472,20 @@ function SavedState(page)
   db.keyboardPage = type(db.keyboardPage) == "table" and db.keyboardPage or {}
   local s = db.keyboardPage
   s.view, s.mode, s.after = page.view, page.mode, page.after
+end
+
+-- Inspector for the "Bar 1 page" picker.
+function StanceInspect(row, pane)
+  local p = ns.PageById("keyboard")
+  local d = p and p.data
+  pane:Header("Interface\\Icons\\Ability_Warrior_OffensiveStance", "Bar 1 page", "Stance, form or stealth")
+  pane:Row("Showing", row:ValueText(), UI.C.HIGHLIGHT)
+  pane:Text("In a stance, form or stealth the game shows another page of Action Bar 1 under the same plain keys. Apply fills every page; the keys need no extra binds.")
+  pane:Row("No stance", "slots 1-12")
+  for _, st in ipairs(d and d.stances or {}) do
+    pane:Row(st.label, "bonus bar " .. st.offset .. " · slots " .. (st.first + 1) .. "-" .. (st.first + 12))
+  end
+  pane:Text("Pick a page to preview it on the Plain layer. The controller's bars don't page: stance macros cover that there.", UI.C.GRAY)
 end
 
 -- The node that stands for the same key in another view (focus survives a view change).
@@ -2265,6 +2564,27 @@ ns.RegisterPage({
     BuildSide(p, stage)
     BuildList(p, stage)
 
+    -- Below the bar mirror: the spec whose layout the plan shows, and (for
+    -- classes whose Bar 1 pages by stance, form or stealth) the page the
+    -- Plain layer previews. Picture and Side views; the List fills the stage.
+    p.specRow = UI.SpecRow(stage, 340, "keyboard:spec")
+    p.specRow:SetPoint("TOPLEFT", 8, -472)
+    p.stanceRow = UI.ChoiceRow(stage, {
+      label = "Bar 1 page", width = 340, id = "keyboard:stance", inspect = StanceInspect,
+      choices = function()
+        local out = { { "none", "No stance" } }
+        for _, st in ipairs(p.data and p.data.stances or {}) do out[#out + 1] = { st.key, st.label } end
+        return out
+      end,
+      get = function() return p.stance end,
+      set = function(key)
+        p.stance = key
+        if p.view ~= "plain" then p.view = "plain"; SavedState(p) end
+        UI.Refresh()
+      end,
+    })
+    p.stanceRow:SetPoint("TOPLEFT", 364, -472)
+
     -- Live layer preview: Shift / Ctrl / Alt (LT on the Gamepad UI is
     -- Shift, RT is Ctrl). Display only.
     UI.WatchModifiers(stage, function(shift, ctrl, alt)
@@ -2294,6 +2614,12 @@ ns.RegisterPage({
     if list then FillList(p)
     elseif side then FillSide(p)
     else FillPicture(p) end
+    local specs = not list and p.specRow:HasSpecs()
+    p.specRow:SetShown(specs)
+    if specs then p.specRow:Sync() end
+    local stances = not list and #(p.data.stances or {}) > 0
+    p.stanceRow:SetShown(stances)
+    if stances then p.stanceRow:Sync() end
   end,
 
   Status = function(p)
@@ -2309,6 +2635,9 @@ ns.RegisterPage({
     end
     if waiting > 0 then parts[#parts + 1] = UI.C.MISSING:WrapTextInColorCode(waiting .. " waiting to learn") end
     local tip = {}
+    local _, class = UnitClass("player")
+    local spec = ns.Layout and ns.Layout.SpecLabel(class)
+    if spec then tip[#tip + 1] = "Spec: " .. spec end
     if d.ab and d.plan then tip[#tip + 1] = "Bars: " .. Plural(bars, "slot changes", "slots change") end
     if d.kb then tip[#tip + 1] = "Keys: " .. Plural(d.diff.keys, "key to set", "keys to set")
       .. (d.diff.extra > 0 and (", " .. Plural(d.diff.extra, "other key", "other keys") .. " to unbind") or "") end
@@ -2351,6 +2680,16 @@ ns.RegisterPage({
       for r = SIDE_FIRST_ROW, #d.plan.rows do
         for i = 1, 12 do
           local e = d.plan[r][i]
+          if e.state == "same" or e.state == "new" then
+            total = total + 1
+            if e.state == "same" then done = done + 1 end
+          end
+        end
+      end
+      -- Bar 1's stance pages count like the side bars (they have no binding of their own).
+      for _, st in ipairs(d.plan.stances or {}) do
+        for i = 1, 12 do
+          local e = st[i]
           if e.state == "same" or e.state == "new" then
             total = total + 1
             if e.state == "same" then done = done + 1 end
@@ -2427,3 +2766,24 @@ ns.RegisterCommand("spells", "list the Action Bars layout, or apply/undo it (als
   elseif arg == "undo" then Undo()
   else Show() end
 end, { usage = "spells [apply|undo]", module = "ActionBars" })
+
+-- /ac spec [auto|<key>]: which spec's layout the bars and the controller use
+-- (the Spec picker on the Keyboard and Controller pages does the same).
+ns.RegisterCommand("spec", "show or set the spec your layouts use: auto, or a spec key", function(arg)
+  arg = (arg or ""):lower():gsub("^%s+", ""):gsub("%s+$", "")
+  local L = ns.Layout
+  local _, class = UnitClass("player")
+  local specs = L and L.Specs(class) or {}
+  if #specs == 0 then return ns.Print("no specs for " .. tostring(class) .. " yet.") end
+  local keys = {}
+  for i, s in ipairs(specs) do keys[i] = s.key .. " (" .. s.name .. ")" end
+  if arg ~= "" then
+    if arg ~= "auto" and not L.SpecByKey(class, arg) then
+      return ns.Print("unknown spec '" .. arg .. "'. Use auto or one of: " .. table.concat(keys, ", ") .. ".")
+    end
+    L.SetSpecChoice(arg)
+    if UI and UI.Refresh then UI.Refresh() end
+  end
+  ns.Print("spec: " .. tostring(L.SpecLabel(class)) .. ". Choices: auto, " .. table.concat(keys, ", ")
+    .. ". Apply on the Keyboard and Controller pages puts it on your bars.")
+end, { usage = "spec [auto|<key>]", module = "ActionBars" })
