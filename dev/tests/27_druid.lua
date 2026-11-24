@@ -94,7 +94,7 @@ test("druid: Restoration follows the healer rule and drops the Moonkin page", fu
   eq(env:slotText(109), nil, "no Moonkin page")
   eq(env:slotText(Pad(1, "RT A")), "spell:Regrowth", "controller RT A: main heal")
   eq(env:slotText(Pad(1, "LT Up")), "spell:Wrath", "controller LT Up: Shift+Q")
-  eq(env:slotText(Pad(2, "LT Y")), "spell:Innervate", "controller page 2 LT Y")
+  eq(env:slotText(Pad(3, "RT X")), "spell:Innervate", "controller page 3 RT X (page 2 LT Y is the shared ManaPot)")
   eq(#env:calls("CreateMacro"), 0)
   eq(env.ns.modules.actionbars.Plan().changes, 0, "up to date after Apply")
 end)

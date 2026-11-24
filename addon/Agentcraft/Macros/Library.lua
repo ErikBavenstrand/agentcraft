@@ -14,15 +14,23 @@
 --     icon = "Serpent Sting",     -- spell or item name for the picture; or iconFile = "INV_..."
 --     requires = { "Serpent Sting" }, -- spells that must be in your spellbook
 --     perCharacter = true,        -- character tab (class macros) or account tab
+--     power = "mana",             -- only classes with mana (L.Fits hides it from warriors and rogues)
+--     generated = "healpot",      -- an item macro: Macros/Items.lua builds its body from your bags
 --     untested = true,            -- shows a warning: not yet confirmed on this game version
 --     desc = "One sentence: what pressing it does.",
---     body = "#showtooltip ...\n/cast ...",   -- 255 characters max after filling
+--     body = "#showtooltip ...\n/cast ...",   -- 255 characters max after filling;
+--                                 -- for a generated macro, the text used while you carry none
 --   })
 --
 -- Conventions every macro follows:
 --   * Start with #showtooltip so the button shows the right icon and cooldown.
---   * Install once, works forever: name only spells and slash commands, never
---     an item (food, pole, weapon, potion). Items go on bars as item buttons.
+--   * Install once, works forever: a hand-written macro names only spells and
+--     slash commands, never an item (food, pole, weapon, potion).
+--   * Item macros are generated instead (owner decision, 2026-11-24): Fish,
+--     Bait, HealPot, ManaPot, Bandage and Food name the best item you carry,
+--     and Agentcraft rewrites them when that changes (L.UpdateGenerated, run
+--     by the ItemMacros module in Macros/Items.lua). They are character
+--     macros, since bags differ, and only a copy Agentcraft wrote is rewritten.
 --   * No Shift/Ctrl variants (they are bar layers) and no @mouseover/@cursor.
 --   * Harmful casts use [@target,harm,nodead] so they never hit friends or corpses.
 --   * Name it after what it does, one word where possible ("Opener", "Fish").
@@ -43,6 +51,7 @@ L.categories = {
   { key = "pet", title = "Pet", icon = "Interface\\Icons\\Ability_Hunter_BeastCall" },
   { key = "racial", title = "Racial", icon = "Interface\\Icons\\Ability_WarStomp" },
   { key = "fishing", title = "Fishing", icon = "Interface\\Icons\\Trade_Fishing" },
+  { key = "consumables", title = "Consumables", icon = "Interface\\Icons\\INV_Potion_54" },
   { key = "professions", title = "Professions", icon = "Interface\\Icons\\Trade_Engineering" },
   { key = "utility", title = "Utility", icon = "Interface\\Icons\\INV_Misc_Bag_08" },
 }
@@ -134,12 +143,17 @@ local function MyProfessions()
   return have, GetProfessions ~= nil
 end
 
+-- Classes without a mana bar: a macro with power = "mana" (ManaPot) doesn't
+-- fit them, and its shared homes stay empty there.
+L.NO_MANA = { WARRIOR = true, ROGUE = true }
+
 -- Whether the macro suits this character's class, race and professions.
 function L.Fits(m)
   local _, class = UnitClass("player")
   local _, race = UnitRace("player")
   if m.class and m.class ~= class then return false end
   if m.race and m.race ~= race then return false end
+  if m.power == "mana" and L.NO_MANA[class] then return false end
   if m.profession then
     local have, canCheck = MyProfessions()
     if canCheck and not have[m.profession] then return false end
@@ -276,10 +290,9 @@ end
 L.Weapons = Weapons
 L.FindPole = FindPole
 
--- Placeholders ({KEY} in a body). Library macros must not depend on what is in
--- your bags or what you wear: a macro is installed once and has to keep
--- working without Agentcraft rewriting it. So no macro uses one today; the
--- mechanism stays for macros that fill in fixed facts (none yet).
+-- Placeholders ({KEY} in a body) fill in fixed facts of the client. What is
+-- in your bags is not a placeholder: item macros are generated
+-- (m.generated, Macros/Items.lua) and rewritten when your bags change.
 L.placeholders = {}
 
 -- {POLETYPE}: the client's own name for the fishing pole subtype, the text
@@ -306,7 +319,14 @@ end
 function L.Resolve(m)
   local reason
   local lines = {}
-  for line in (m.body .. "\n"):gmatch("(.-)\n") do
+  local text = m.body
+  if m.generated then
+    -- An item macro: the text for the best item you carry, else m.body
+    -- (which says you carry none).
+    local gen = L.generators and L.generators[m.generated]
+    text = gen and gen() or m.body
+  end
+  for line in (text .. "\n"):gmatch("(.-)\n") do
     local drop = false
     line = line:gsub("{(%u+)(%??)}", function(key, optional)
       local fn = L.placeholders[key]
@@ -435,7 +455,9 @@ function L.State(m)
   return "ready", 0
 end
 
-local function IconFor(m) return m.iconFile or "INV_Misc_QuestionMark" end
+-- A generated macro keeps the question-mark icon, so its button shows the
+-- item its #showtooltip names.
+local function IconFor(m) return (not m.generated and m.iconFile) or "INV_Misc_QuestionMark" end
 
 -- Free slots in the General (account) and Character macro tabs.
 local function FreeSlots()
@@ -551,4 +573,32 @@ function L.PickUp(m)
   local index = IndexOf(m.name)
   if index == 0 then return ns.Print(m.name .. " isn't installed yet.") end
   PickupMacro(index)
+end
+
+-- Generated item macros -------------------------------------------------------
+-- Rewrites the text of each installed item macro (m.generated) whose best
+-- item changed. Only a macro Agentcraft wrote (a text it recorded writing,
+-- or an older library text) in this character's macro tab is edited: a copy
+-- still in the General tab waits for Update on the Macros page, and your own
+-- macro of the same name is never touched. Never creates or deletes a macro,
+-- so the 18 character slots are spent only by Install.
+-- Returns the names it rewrote, or nil and "combat".
+function L.UpdateGenerated()
+  if InCombatLockdown() then return nil, "combat" end
+  local done = {}
+  for _, m in ipairs(L.macros) do
+    if m.generated then
+      local index, legacy = IndexOf(m.name)
+      if index > 0 and not legacy and not InWrongTab(m, index) and IsOurs(m, index, false, nil) then
+        local body = L.Resolve(m)
+        if body and Trim(GetMacroBody(index)) ~= Trim(body) then
+          if pcall(EditMacro, index, m.name, IconFor(m), body) then
+            Record(m.name, body)
+            done[#done + 1] = m.name
+          end
+        end
+      end
+    end
+  end
+  return done
 end

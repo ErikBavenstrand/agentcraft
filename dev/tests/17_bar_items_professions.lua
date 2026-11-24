@@ -35,8 +35,9 @@ test("bars: Alt holds only the on-use trinket and the Hearthstone; nothing else 
   local p = AB.Plan()
   for i = 1, 12 do
     local e = p[3][i]
-    -- Alt+F/G are the Fish and Bait macro homes (18_fishing_homes.lua).
-    if i == 5 or i == 6 then eq(e.kind, "macro", "Alt key " .. i .. " is a macro home, not an item")
+    -- Alt+Q/E/R/T are the item macro homes (31_item_macros.lua), Alt+F/G
+    -- the Fish and Bait ones (18_fishing_homes.lua): macros, never item buttons.
+    if i <= 6 then eq(e.kind, "macro", "Alt key " .. i .. " is a macro home, not an item")
     elseif i == 7 then eq(e.id, 11122, "Alt+C: the trinket with a Use effect")
     elseif i == 8 then eq(e.id, nil, "Alt+V: the equipped trinket has no Use effect")
     elseif i == 12 then eq(e.id, 6948, "Alt+4: Hearthstone")

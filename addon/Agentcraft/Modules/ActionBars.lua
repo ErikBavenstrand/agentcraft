@@ -6,9 +6,10 @@
 -- Keyed bars (keys come from the Keybinds module):
 --   slot:  1 2 3 4 5 6 7 8 9 10 11 12
 --   key:   Q E R T F G C V 1 2  3  4
---   Bar 1 = key, Bar 2 = Shift+key, Bar 3 = Alt+key (all classes: the Fish
---   and Bait macros on Alt+F/G once installed, on-use trinkets on Alt+C/V
---   and the Hearthstone on Alt+4), Bar 4 = Ctrl+key
+--   Bar 1 = key, Bar 2 = Shift+key, Bar 3 = Alt+key (all classes: the item
+--   macros HealPot, ManaPot, Bandage and Food on Alt+Q/E/R/T and Fish and
+--   Bait on Alt+F/G once installed, on-use trinkets on Alt+C/V and the
+--   Hearthstone on Alt+4), Bar 4 = Ctrl+key
 -- Click-only side bars, grouped automatically from your spellbook (a spell
 -- on a keyed bar never shows here too: one home per spell):
 --   Action Bar 5 = pet spells, then other class spells not on a keyed bar
@@ -22,6 +23,8 @@
 --   then pet utilities give up their slot before a class spell does.
 -- The only bag items on any bar: the Hearthstone (Alt+4) and the Cozy
 -- Sleeping Bag (side bar), plus your equipped on-use trinkets (Alt+C/V).
+-- Potions, bandages, food, bait and poles reach a key only through the
+-- generated item macros (Macros/Items.lua), never as item buttons.
 --   Each spell goes on the side bars once, by name: WoW Forever knows some
 --   professions under an old and a new spell ID (Cooking 3102 and 1240956),
 --   and the side bars take the ID the spellbook lists.
@@ -72,11 +75,13 @@ end
 -- Classes with a role layout (Layout.lua) use it instead, shared with the controller.
 M.profiles = {}
 
--- Bar 3 (Alt) for every class. The only items Agentcraft ever places are
+-- Bar 3 (Alt) for every class, identical for every class and spec (no
+-- class layout sets it). The only item buttons Agentcraft ever places are
 -- your equipped on-use trinkets, the Hearthstone and the Cozy Sleeping Bag
--- (owner rules, 2026-11-22; the bag sits on a side bar, not here): no food,
--- drink, potions, bandages, bombs, gadgets or elixirs, here or on the
--- controller. An entry is a list of item names
+-- (owner rules, 2026-11-22; the bag sits on a side bar, not here): food,
+-- potions, bandages and bait come only through the generated item macros
+-- (owner decision, 2026-11-24; Macros/Items.lua keeps them on the best item
+-- you carry). An entry is a list of item names
 -- (the first one you carry is used), trinket1/trinket2 (the equipped
 -- trinket, only when it has an on-use effect) or { macro = "Fish" } (that
 -- library macro once you installed it on the Macros page; Apply never
@@ -86,7 +91,10 @@ M.profiles = {}
 -- The Fishing spell itself keeps its click-only side-bar home: the Fish
 -- macro is the convenient key, and side bars never take macros.
 M.utility = {
-  false, false, false, false, -- Alt+Q E R T: not in the layout
+  { macro = "HealPot" }, -- Alt+Q  Healthstone, else best healing potion (Shift+Q is the self-heal spell)
+  { macro = "ManaPot" }, -- Alt+E  mana gem, else best mana potion (empty on warriors and rogues)
+  { macro = "Bandage" }, -- Alt+R  best bandage on yourself
+  { macro = "Food" },    -- Alt+T  best food for your level
   { macro = "Fish" },  -- Alt+F  (owner request, 2026-11-22)
   { macro = "Bait" },  -- Alt+G  best fishing bait you carry onto the pole
   "trinket1",          -- Alt+C
@@ -564,11 +572,14 @@ local function PlacedByUs(slot)
   return not (saved and saved[1] == "item" and saved[2] == id)
 end
 
--- An Alt key the layout leaves out (no utility entry) that holds something
--- of yours: Apply leaves it alone. One holding what Agentcraft placed is
--- cleared instead (the old consumables).
+-- An Alt key the layout leaves out (no utility entry), or a macro home
+-- whose macro you haven't installed (HealPot on Alt+Q), that holds
+-- something of yours: Apply leaves it alone, so a potion button you placed
+-- yourself stays until you install the macro. One holding what Agentcraft
+-- placed is cleared instead (the old consumables).
 local function AltFree(slot, entry)
-  return InAltBar(slot) and not entry and GetActionInfo(slot) ~= nil and not PlacedByUs(slot)
+  if entry and not (AltMacro(entry) and ResolveAltMacro(entry).missing) then return false end
+  return InAltBar(slot) and GetActionInfo(slot) ~= nil and not PlacedByUs(slot)
 end
 
 local function SpellNameOf(id)
@@ -1003,7 +1014,7 @@ local function Show()
       end
     end
   end
-  print("|cffffd100Bar 3 (Alt, fishing macros, trinkets and Hearthstone)|r")
+  print("|cffffd100Bar 3 (Alt: item macros, trinkets and Hearthstone)|r")
   local utility = profile[3] or M.utility
   for i = 1, 12 do
     local entry = utility[i]
@@ -1093,7 +1104,9 @@ local function PlanState(plan, e)
   if e.state == "new" or e.state == "clear" or e.clears then plan.changes = plan.changes + 1 end
   if e.state == "missing" then
     if e.kind == "spell" then plan.spellsMissing = plan.spellsMissing + 1
-    elseif e.kind == "macro" then plan.macrosMissing = plan.macrosMissing + 1
+    elseif e.kind == "macro" then
+      -- ManaPot on a class without mana: empty for good, nothing to install.
+      if not (e.item and e.item.reason == "nomana") then plan.macrosMissing = plan.macrosMissing + 1 end
     else plan.itemsMissing = plan.itemsMissing + 1 end
   end
 end
@@ -1135,6 +1148,8 @@ function M.Plan()
           e.item, e.kind, e.macro = item, "macro", entry.macro
           e.id = not item.missing and item.name or nil
           e.name = item.name or item.missing
+          -- Your own button on a waiting macro home stays until you install it.
+          if item.missing and AltFree(e.slot, entry) then e.free = true end
         elseif entry then
           e.cands = type(entry) == "table" and entry or nil
           local id = ResolveUtility(entry, bags)
@@ -1450,7 +1465,13 @@ local function StateText(c)
   end
   if a.state == "clear" then return "Cleared when you apply", UI.C.REMOVED end
   if a.state == "kept" then return "Kept: Apply leaves this slot alone", UI.C.GRAY end
-  if a.state == "free" then return "Not in the layout: Apply leaves your own button here", UI.C.GRAY end
+  if a.state == "free" then
+    local e = c.entry
+    if e and e.kind == "macro" and e.macro then
+      return "Your own button stays until you install " .. e.macro .. " on the Macros page", UI.C.GRAY
+    end
+    return "Not in the layout: Apply leaves your own button here", UI.C.GRAY
+  end
   if c.bindState == "replaces" then return "Replaces your bind when you apply", UI.C.REPLACES end
   if c.changed then return "Added when you apply", UI.C.ADDED end
   return "In place", UI.C.GREEN
@@ -2741,7 +2762,7 @@ ns.RegisterPage({
       pane:Row("Waiting to learn", tostring(waiting), waiting > 0 and UI.C.MISSING or nil)
     end
     pane:Section("How it works")
-    pane:Text("The same 12 keys work on every bar: plain is Action Bar 1, Shift is Action Bar 2, Ctrl is Action Bar 4 and Alt is Action Bar 3 (the Fish and Bait macros on Alt+F and Alt+G once you install them on the Macros page, on-use trinkets on Alt+C and Alt+V, the Hearthstone on Alt+4). Spells without a key sit on the side bars, Action Bars 5-8, each once, with the Cozy Sleeping Bag after the professions; nothing else from your bags goes on a bar. Pet abilities sit on Z and X, pet commands on the mouse buttons.")
+    pane:Text("The same 12 keys work on every bar: plain is Action Bar 1, Shift is Action Bar 2, Ctrl is Action Bar 4 and Alt is Action Bar 3 (the item macros once you install them on the Macros page: HealPot, ManaPot, Bandage and Food on Alt+Q, E, R and T, Fish and Bait on Alt+F and Alt+G; on-use trinkets on Alt+C and Alt+V, the Hearthstone on Alt+4). Spells without a key sit on the side bars, Action Bars 5-8, each once, with the Cozy Sleeping Bag after the professions; nothing else from your bags goes on a bar. Pet abilities sit on Z and X, pet commands on the mouse buttons.")
     pane:Text("Move to a key to see all four layers. " .. PadName("PAD1") .. " or Enter pins it here.", UI.C.GRAY)
     pane:Buttons(RestoreButtons())
   end,

@@ -144,7 +144,7 @@ ns.Layout.Register("DRUID", {
             ["LT+RT Y"] = { "Starfire" },                 -- Shift+R
             ["LT+RT Up"] = { "Faerie Fire" },             -- Ctrl+Q
           },
-          -- Page 2 as shared, with Innervate where Rejuv sits (Rejuv is on page 1).
+          -- Page 2 as shared (the item macros take LT X Y B Left).
           [2] = {
             title = "Utility",
             ["RT A"] = { "Revive" },
@@ -154,10 +154,31 @@ ns.Layout.Register("DRUID", {
             ["RT Down"] = { "Mark of the Wild" },
             ["RT Left"] = { "Aquatic Form" },
             ["RT Right"] = { "Thorns" },
-            ["LT X"] = { "Teleport: Moonglade" },
-            ["LT B"] = { "Soothe Animal" },
-            ["LT Y"] = { "Innervate" },
             ["LT Right"] = { "Track Humanoids" },
+          },
+          -- Page 3 as shared, with Innervate where Rejuv sits (Rejuv and
+          -- Tranquility are on page 1).
+          [3] = {
+            title = "Extras",
+            ["RT A"] = { "Teleport: Moonglade" },
+            ["RT X"] = { "Innervate" },
+            ["RT B"] = { "Soothe Animal" },
+            ["RT Y"] = { overflow = true },
+            ["none Up"] = { macro = "Reload" },
+            ["none Down"] = { macro = "Follow" },
+            ["none Left"] = { macro = "Focus" },
+            ["none Right"] = { macro = "Assist" },
+            ["LT+RT A"] = { macro = "Skull" },
+            ["RT Up"] = { overflow = true }, ["RT Down"] = { overflow = true },
+            ["RT Left"] = { overflow = true }, ["RT Right"] = { overflow = true },
+            ["LT A"] = { overflow = true }, ["LT X"] = { overflow = true },
+            ["LT B"] = { overflow = true }, ["LT Y"] = { overflow = true },
+            ["LT Up"] = { overflow = true }, ["LT Down"] = { overflow = true },
+            ["LT Left"] = { overflow = true }, ["LT Right"] = { overflow = true },
+            ["LT+RT X"] = { overflow = true }, ["LT+RT B"] = { overflow = true },
+            ["LT+RT Y"] = { overflow = true }, ["LT+RT Up"] = { overflow = true },
+            ["LT+RT Down"] = { overflow = true }, ["LT+RT Left"] = { overflow = true },
+            ["LT+RT Right"] = { overflow = true },
           },
         },
       },
@@ -299,23 +320,23 @@ ns.Layout.Register("DRUID", {
         ["RT Down"] = { "Mark of the Wild" },
         ["RT Left"] = { "Aquatic Form" },
         ["RT Right"] = { "Thorns" },
-        ["LT X"] = { "Teleport: Moonglade" },
-        ["LT B"] = { "Soothe Animal" },
-        ["LT Y"] = { macro = "Rejuv", "Rejuvenation" },
-        ["LT Left"] = { "Tranquility" },
         ["LT Right"] = { "Track Humanoids" },
       },
-      -- Page 3: Steam Deck helpers and the catch-all (spells a form macro
-      -- will cover once installed, Moonkin Form and the rest).
+      -- Page 3: Moonglade, Soothe Animal, the out-of-form heals (moved off
+      -- page 2 for the shared item macros), Steam Deck helpers and the
+      -- catch-all (spells a form macro will cover once installed, Moonkin
+      -- Form and the rest).
       {
         title = "Extras",
+        ["RT A"] = { "Teleport: Moonglade" },
+        ["RT X"] = { "Soothe Animal" },
+        ["RT B"] = { macro = "Rejuv", "Rejuvenation" },
+        ["RT Y"] = { "Tranquility" },
         ["none Up"] = { macro = "Reload" },
         ["none Down"] = { macro = "Follow" },
         ["none Left"] = { macro = "Focus" },
         ["none Right"] = { macro = "Assist" },
         ["LT+RT A"] = { macro = "Skull" },
-        ["RT A"] = { overflow = true }, ["RT X"] = { overflow = true },
-        ["RT B"] = { overflow = true }, ["RT Y"] = { overflow = true },
         ["RT Up"] = { overflow = true }, ["RT Down"] = { overflow = true },
         ["RT Left"] = { overflow = true }, ["RT Right"] = { overflow = true },
         ["LT A"] = { overflow = true }, ["LT X"] = { overflow = true },

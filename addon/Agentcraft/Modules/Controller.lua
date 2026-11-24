@@ -72,6 +72,7 @@ local function Util() return GamepadActionBarBindingUtil end
 local KnownID -- defined below
 local LibraryIcon -- defined below
 local ProfessionList -- defined below
+local NoMana -- defined below
 
 -- The class layout lives in Layout.lua, shared with the keyboard bars.
 local function Layout()
@@ -154,6 +155,20 @@ local function PetToggleItem(a)
   return { missing = a.name, reason = "nomacro", icon = a.icon }
 end
 
+-- Whether the library macro needs mana (power = "mana", ManaPot) and your
+-- class has none: its shared homes stay empty on warriors and rogues.
+function NoMana(name)
+  local L = ns.MacroLibrary
+  if not (L and L.NO_MANA) then return false end
+  local _, class = UnitClass("player")
+  if not L.NO_MANA[class] then return false end
+  for _, m in ipairs(L.macros or {}) do
+    if m.name == name then return m.power == "mana" end
+  end
+  return false
+end
+M.NoMana = NoMana
+
 -- Index of an installed macro. Applying a layout never installs library
 -- macros: which macros you use is your choice on the Macros page.
 local function MacroIndex(name)
@@ -217,7 +232,9 @@ function M.Resolve(entry, known, used)
     local id = plain and KnownID(plain, known)
     if id then return { kind = "spell", id = id, name = plain } end
     -- A macro-only home ({ macro = "Bait" }) waits, showing the macro's icon.
-    return { missing = entry.macro .. " macro", macro = entry.macro, reason = "install", icon = LibraryIcon(entry.macro) }
+    -- ManaPot on a class without mana stays empty instead (nothing to install).
+    local reason = NoMana(entry.macro) and "nomana" or "install"
+    return { missing = entry.macro .. " macro", macro = entry.macro, reason = reason, icon = LibraryIcon(entry.macro) }
   end
   if entry.item then
     -- { item = "Hearthstone" }, { item = "Cozy Sleeping Bag" }: that item,
@@ -706,6 +723,7 @@ local REASON = {
   carry = "None in your bags. Added when you carry one and apply again.",
   equip = "No trinket with a Use effect equipped. Added when you equip one and apply again.",
   install = "Macro not installed. Install it on the Macros page, then apply again.",
+  nomana = "Your class has no mana, so this button stays empty. It is the same button on every class.",
   nomacro = "No autocast macro for this ability in the Macro Library yet.",
   notpaddle = "Back buttons are plain key bindings: they can't open a radial or toggle autocast.",
   profession = "A shared profession slot: filled with your next profession spell. Added when you learn another profession and apply again.",
@@ -715,13 +733,17 @@ M.ReasonText = ReasonText
 
 local WAITING = { learn = "Waiting · learn it first", carry = "Waiting · carry one",
   equip = "Waiting · equip an on-use trinket", install = "Waiting · install its macro",
+  nomana = "Empty · your class has no mana",
   nomacro = "Waiting · no autocast macro yet", notpaddle = "Can't go on a back button",
   profession = "Waiting · learn another profession" }
 local KIND = { spell = "Spell", item = "Item", macro = "Macro", flyout = "Radial" }
 
 -- "Waiting · install Bait on the Macros page": a macro home whose macro you
 -- haven't installed. The Keyboard page uses the same words.
-function M.InstallText(name) return "Waiting · install " .. tostring(name) .. " on the Macros page" end
+function M.InstallText(name)
+  if NoMana(name) then return "Empty · your class has no mana" end
+  return "Waiting · install " .. tostring(name) .. " on the Macros page"
+end
 
 local function TabLabel(i, title) return i .. " · " .. (title or "Empty") end
 

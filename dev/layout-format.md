@@ -19,14 +19,14 @@ Check your work with `powershell -NoProfile -ExecutionPolicy Bypass -File dev/de
 These hold for every class. `rules` enforces the ones marked [rules].
 
 - Apply never creates macros. A macro home uses its plain spell until the player installs the macro on the Macros page.
-- Keyboard: no flyouts, `petauto` or `overflow` entries [rules]. Layers: plain keys = Bar 1, Shift = Bar 2, Ctrl = Bar 4. Bar 3 is the Alt bar, shared by all classes and filled by ActionBars (trinkets Alt+C/V, Fish Alt+F, Bait Alt+G, Hearthstone Alt+4); a layout's `[3]` is ignored [rules: warning].
+- Keyboard: no flyouts, `petauto` or `overflow` entries [rules]. Layers: plain keys = Bar 1, Shift = Bar 2, Ctrl = Bar 4. Bar 3 is the Alt bar, shared by all classes and filled by ActionBars (the item macros HealPot Alt+Q, ManaPot Alt+E, Bandage Alt+R, Food Alt+T, Fish Alt+F, Bait Alt+G; trinkets Alt+C/V, Hearthstone Alt+4); a layout's `[3]` is ignored [rules: warning].
 - Side bars (Action Bars 5-8) fill themselves with every known spell that has no key. Leave situational spells to them.
-- Shared controller buttons (`Layouts/Shared.lua`): Hearthstone, trinkets, Fish, Bait, camp, Mount and the profession slots are the same on every class's page 2. A class page never names one of their buttons [rules].
+- Shared controller buttons (`Layouts/Shared.lua`): Hearthstone, trinkets, the item macros (HealPot, ManaPot, Bandage, Food, Fish, Bait), camp, Mount and the profession slots are the same on every class's page 2. A class page never names one of their buttons [rules]; its own page 2 buttons are the RT layer (but RT Up) and LT Right.
 - Professions: a class layout never names a profession spell (`Layout.PROFESSIONS`: the primaries, Cooking, First Aid, Bait and Tackle, Find Minerals, Find Herbs, Smelting, Disenchant, Prospecting, Milling, Survey) [rules]. Their homes are the shared `{ profession = n }` slots on the controller and Action Bar 6 (click only) on the keyboard, filled from each character's own professions.
 - One home per spell per spec per device [rules]. An item, a utility slot, your racial, a macro and a flyout count as homes too. The stance-page exception is below.
 - Back buttons (`paddles`, F13-F16) stay empty (`paddles = {}`) unless the owner asks.
-- Macros name only spells, slash commands and pet abilities; items only as `/use 13`/`/use 14` slot numbers (Fish and Bait are the owner's exceptions). No `[mod]` conditions, no `@mouseover` or `@cursor`, no `/petattack`, no `/petpassive`, at most 255 characters and a name of at most 16 characters [rules].
-- Bars place only the Hearthstone, the Cozy Sleeping Bag and equipped on-use trinkets. Never food, drink, potions, bandages, bombs, gadgets or elixirs.
+- Hand-written macros name only spells, slash commands and pet abilities; items only as `/use 13`/`/use 14` slot numbers. The generated item macros (`generated = "<key>"`: Fish, Bait, HealPot, ManaPot, Bandage, Food; owner decision 2026-11-24) may name items: `Macros/Items.lua` builds their text from the best item you carry and rewrites it when that changes [rules: info]. No `[mod]` conditions, no `@mouseover` or `@cursor`, no `/petattack`, no `/petpassive`, at most 255 characters and a name of at most 16 characters [rules].
+- Bars place only the Hearthstone, the Cozy Sleeping Bag and equipped on-use trinkets as item buttons. Never food, drink, potions, bandages, bombs, gadgets or elixirs as item buttons: potions, bandages, food, bait and poles reach a key only through the generated item macros.
 
 ## Layouts/<Class>.lua
 
@@ -154,11 +154,17 @@ Page 2:
 | `RT Up` | `{ item = "Hearthstone" }` |
 | `LT Up` / `LT Down` | `{ utility = 8 }` / `{ utility = 7 }` (on-use trinkets) |
 | `LT A` | `{ macro = "Bait" }` |
+| `LT X` | `{ macro = "HealPot" }` (keyboard Alt+Q) |
+| `LT Y` | `{ macro = "ManaPot" }` (Alt+E; empty on warriors and rogues: no mana) |
+| `LT B` | `{ macro = "Bandage" }` (Alt+R) |
+| `LT Left` | `{ macro = "Food" }` (Alt+T) |
 | `none Up` | `{ macro = "Fish", "Fishing" }` |
 | `none Left` | `{ item = "Cozy Sleeping Bag" }` |
 | `none Down` | `{ "Basic Campfire" }` |
 | `none Right` | `{ macro = "Mount" }` (waits until installed) |
 | `LT+RT A Y X B Down Up Left Right` | `{ profession = 1 }` ... `{ profession = 8 }`, in that button order |
+
+The LT layer is the item layer: Bait, the four consumable macros and the trinkets. The item macro homes take their macro only once you install it on the Macros page (Apply never creates one) and wait with "Waiting · install <name> on the Macros page" until then; your own button on a waiting Alt key stays until you install the macro.
 
 The profession order (`Layout.PROFESSIONS`, built per character by `ActionBars.ProfessionSpells` from `GetProfessions`/`GetProfessionInfo` and the spellbook, names as fallback):
 
@@ -210,6 +216,11 @@ L.Add({ name = "Overpower", category = "combat", class = "WARRIOR", order = 20, 
 - Cite the source of each macro in the file header.
 - Names are unique across all data files and at most 16 characters; reuse existing short lowercase `tags` (`rotation`, `opener`, `defensive`, `cooldown`, `crowd control`, `controller`, `group`, `travel`) before inventing one.
 - A layout home names the macro with `macro = "Overpower"`; the macro must exist, or `rules` fails.
+- Class consumables never get a class macro: the shared item macros already cover them for every class (Healthstones in HealPot, mana gems in ManaPot, conjured food in Food; `Macros/Items.lua`). Add a new item to the lists there, not a class file.
+
+### Generated item macros
+
+`generated = "<key>"` makes a macro an item macro (`Macros/Data/General.lua`: Fish, Bait, HealPot, ManaPot, Bandage, Food). `L.generators[key]` in `Macros/Items.lua` returns the text for the best item you carry (only items in your bags, plus the pole in your hands for Fish; gated by level from `C_Item.GetItemInfo` minLevel, else the list's `level`, and by First Aid or Fishing skill), or nil; then the macro's own `body` runs, which prints "no <thing> in your bags". They are character macros (`perCharacter = true`), keep the question-mark icon so the button shows the item, and `power = "mana"` keeps ManaPot from warriors and rogues. Once installed, the ItemMacros module rewrites them (`L.UpdateGenerated`) on `BAG_UPDATE_DELAYED`, `PLAYER_LEVEL_UP`, `SKILL_LINES_CHANGED` and login, one second after the last change, never in combat (queued until `PLAYER_REGEN_ENABLED`), only when the text changes, and only a copy Agentcraft wrote in the character tab. Install still happens only on the Macros page.
 
 ## dev/harness/fixtures/<class>.lua
 

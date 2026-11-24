@@ -4,7 +4,7 @@ Generated from `addon/Agentcraft/Layouts/*.lua` and `Macros/Data/*.lua` by `luaj
 
 ## Role guide
 
-The keybinds are the same for every class (hard rule): plain keys = Action Bar 1, Shift = Bar 2, Ctrl = Bar 4, Alt = Bar 3 (shared: Fish Alt+F, Bait Alt+G, trinkets Alt+C/V, Hearthstone Alt+4), pet bar on the mouse and Z/X. What sits on a key follows these roles where the class has a fitting spell ([dev/key-roles.md](key-roles.md); the Beast Mastery hunter is the reference):
+The keybinds are the same for every class (hard rule): plain keys = Action Bar 1, Shift = Bar 2, Ctrl = Bar 4, Alt = Bar 3 (shared item macros: HealPot Alt+Q, ManaPot Alt+E, Bandage Alt+R, Food Alt+T, Fish Alt+F, Bait Alt+G; trinkets Alt+C/V, Hearthstone Alt+4), pet bar on the mouse and Z/X. What sits on a key follows these roles where the class has a fitting spell ([dev/key-roles.md](key-roles.md); the Beast Mastery hunter is the reference):
 
 | Key | Plain | Shift | Ctrl |
 | --- | --- | --- | --- |
@@ -33,8 +33,12 @@ The keybinds are the same for every class (hard rule): plain keys = Action Bar 1
 | --- | --- |
 | RT Up | Hearthstone |
 | LT A | [Bait] |
+| LT X | [HealPot] |
+| LT B | [Bandage] |
+| LT Y | [ManaPot] |
 | LT Up | trinket 8 |
 | LT Down | trinket 7 |
+| LT Left | [Food] |
 | none Up | Fishing [Fish] |
 | none Down | Basic Campfire |
 | none Left | Cozy Sleeping Bag |
@@ -736,10 +740,6 @@ Only the shared buttons.
 | RT Down | Arcane Brilliance |
 | RT Left | Teleport: Orgrimmar / Teleport: Stormwind |
 | RT Right | Portal: Orgrimmar / Portal: Stormwind |
-| LT X | Teleport: Undercity / Teleport: Ironforge |
-| LT B | Teleport: Thunder Bluff / Teleport: Darnassus |
-| LT Y | Teleport: Dalaran |
-| LT Left | Portal: Undercity / Portal: Ironforge |
 | LT Right | Portal: Thunder Bluff / Portal: Darnassus |
 
 ### Macros
@@ -911,10 +911,6 @@ Only the shared buttons.
 | RT Down | Mark of the Wild |
 | RT Left | Aquatic Form |
 | RT Right | Thorns |
-| LT X | Teleport: Moonglade |
-| LT B | Soothe Animal |
-| LT Y | Rejuvenation [Rejuv] |
-| LT Left | Tranquility |
 | LT Right | Track Humanoids |
 
 ### Controller page 2 (class buttons): Restoration
@@ -928,9 +924,6 @@ Only the shared buttons.
 | RT Down | Mark of the Wild |
 | RT Left | Aquatic Form |
 | RT Right | Thorns |
-| LT X | Teleport: Moonglade |
-| LT B | Soothe Animal |
-| LT Y | Innervate |
 | LT Right | Track Humanoids |
 
 ### Macros

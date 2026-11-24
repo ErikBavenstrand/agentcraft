@@ -230,9 +230,11 @@ ns.Layout.Register("MAGE", {
         ["LT+RT Left"] = { macro = "CounterFocus" },    -- Ctrl+R
         ["LT+RT Right"] = { "Fire Ward" },              -- Ctrl+T
       },
-      -- Page 2: armors, conjures, teleports and portals; the shared Utility
-      -- buttons (Layouts/Shared.lua) add Hearthstone, trinkets, fishing, camp,
-      -- Mount and professions. Faction pairs: you know only your side's one.
+      -- Page 2: armors, conjures, your home city's teleport and portal; the
+      -- shared Utility buttons (Layouts/Shared.lua) add Hearthstone,
+      -- trinkets, fishing, the item macros on LT X Y B Left, camp, Mount and
+      -- professions. The other cities' teleports and portals are on page 3.
+      -- Faction pairs: you know only your side's one.
       {
         title = "Utility",
         ["RT A"] = { macro = "ArmorSwap", "Ice Armor", "Frost Armor", upgrade = true },
@@ -242,21 +244,21 @@ ns.Layout.Register("MAGE", {
         ["RT Down"] = { "Arcane Brilliance" },
         ["RT Left"] = { "Teleport: Orgrimmar", "Teleport: Stormwind" },
         ["RT Right"] = { "Portal: Orgrimmar", "Portal: Stormwind" },
-        ["LT X"] = { "Teleport: Undercity", "Teleport: Ironforge" },
-        ["LT B"] = { "Teleport: Thunder Bluff", "Teleport: Darnassus" },
-        ["LT Y"] = { "Teleport: Dalaran" },
-        ["LT Left"] = { "Portal: Undercity", "Portal: Ironforge" },
         ["LT Right"] = { "Portal: Thunder Bluff", "Portal: Darnassus" },
       },
-      -- Page 3: rarer magic, Steam Deck helpers and the catch-all.
+      -- Page 3: rarer magic, the other cities' teleports and portals (moved
+      -- off page 2 for the shared item macros), Steam Deck helpers and the
+      -- catch-all.
       {
         title = "Extras",
         ["RT A"] = { "Slow Fall" },
         ["RT X"] = { "Dampen Magic" },
         ["RT B"] = { "Amplify Magic" },
         ["RT Y"] = { "Conjure Food" },
-        ["RT Up"] = { overflow = true }, ["RT Down"] = { overflow = true },
-        ["RT Left"] = { overflow = true }, ["RT Right"] = { overflow = true },
+        ["RT Up"] = { "Teleport: Undercity", "Teleport: Ironforge" },
+        ["RT Down"] = { "Teleport: Thunder Bluff", "Teleport: Darnassus" },
+        ["RT Left"] = { "Portal: Undercity", "Portal: Ironforge" },
+        ["RT Right"] = { "Teleport: Dalaran" },
         ["none Up"] = { macro = "Reload" },
         ["none Down"] = { macro = "Follow" },
         ["none Left"] = { macro = "Focus" },

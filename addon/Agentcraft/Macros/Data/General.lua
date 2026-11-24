@@ -1,37 +1,62 @@
--- Macros for every class: fishing and utility. Sources: warcraft.wiki.gg
--- Useful macros. See Library.lua for the fields and rules.
+-- Macros for every class: fishing, consumables and utility. Sources:
+-- warcraft.wiki.gg Useful macros. See Library.lua for the fields and rules.
 --
 -- A macro earns its place only if it does something a plain button or the
--- game's own menus can't, and keeps working forever once installed: it names
--- spells and slash commands only, never an item. Food and drink are item
--- buttons placed by Apply. Fish's /equip of poles by name is the one
--- exception, which the owner chose.
+-- game's own menus can't. Hand-written macros keep working forever once
+-- installed: they name spells and slash commands only, never an item.
+-- The item macros (Fish, Bait, HealPot, ManaPot, Bandage, Food) are
+-- generated instead: their text names the best item you carry and
+-- Agentcraft rewrites it when that changes (owner decision, 2026-11-24;
+-- builders, item lists and the updater in Macros/Items.lua). Their body
+-- below is the text used while you carry none of that thing.
 local _, ns = ...
 local L = ns.MacroLibrary
 
 -- Fishing ----------------------------------------------------------------------
--- With a pole in your hands it fishes. Otherwise it tries every common pole
--- by name, worst first, so the best one you carry ends up equipped; poles
--- you don't have are skipped. [equipped:] takes the item subtype, so any
--- pole counts. The subtype name is "Fishing Poles" (plural, as in the
--- auction house), though tooltips say "Fishing Pole". The Fishing module
--- puts your weapons back 15 seconds after your last cast ends, or when you
--- mount, unless you turn it off with /ac off Fishing.
+-- Fish: with a pole in your hands it fishes; otherwise it equips the best
+-- pole you carry (only poles in your bags or hands, best first).
+-- [equipped:] takes the client's own pole subtype name ({POLETYPE}). The
+-- Fishing module puts your weapons back 15 seconds after your last cast
+-- ends, or when you mount, unless you turn it off with /ac off Fishing.
+-- Example: #showtooltip Fishing / /cast [equipped:Fishing Poles] Fishing /
+-- /stopmacro [equipped:Fishing Poles] / /equip Big Iron Fishing Pole
 
 L.Add({ name = "Fish", category = "fishing", profession = "Fishing", order = 10, icon = "Fishing",
-  tags = { "controller", "gear" }, untested = true,
-  desc = "One button fishing: the first press equips your best pole, the next presses fish. The Fishing module puts your weapons back 15 s after you stop fishing, or when you mount after fishing (/ac off Fishing to do it yourself).",
-  body = "#showtooltip Fishing\n/cast [equipped:{POLETYPE}] Fishing\n/stopmacro [equipped:{POLETYPE}]\n/equip Fishing Pole\n/equip Strong Fishing Pole\n/equip Darkwood Fishing Pole\n/equip Big Iron Fishing Pole\n/equip Seth's Graphite Fishing Pole" })
+  tags = { "controller", "gear" }, perCharacter = true, generated = "fish", untested = true,
+  desc = "One button fishing: the first press equips the best pole you carry, the next presses fish. The Fishing module puts your weapons back 15 s after you stop fishing, or when you mount after fishing (/ac off Fishing to do it yourself).",
+  body = "#showtooltip Fishing\n/run print(\"Agentcraft: no fishing pole in your bags\")" })
 
--- Bait names its baits (owner request, 2026-11-22: the second approved
--- item exception, like Fish's poles). Worst first: each /use of a bait you
--- carry starts the apply-to-weapon cursor and the next one you carry
--- replaces it, so the best bait you have ends on the cursor and /use 16
--- puts it on the pole in your main hand.
+-- Bait: the best lure you carry and your Fishing skill allows, then /use 16
+-- puts it on the pole in your main hand. One lure per text, so no other
+-- lure can take the cursor.
 L.Add({ name = "Bait", category = "fishing", profession = "Fishing", order = 11,
-  iconFile = "INV_Misc_Orb_03", tags = { "controller", "gear" }, untested = true,
-  desc = "Puts the best fishing bait you carry on your pole: Aquadynamic Fish Attractor, Bright Baubles, Nightcrawlers or Shiny Bauble. Equip the pole first (press Fish).",
-  body = "#showtooltip\n/use Shiny Bauble\n/use Nightcrawlers\n/use Bright Baubles\n/use Aquadynamic Fish Attractor\n/use 16" })
+  iconFile = "INV_Misc_Orb_03", tags = { "controller", "gear" }, perCharacter = true, generated = "bait", untested = true,
+  desc = "Puts the best fishing bait you carry on your pole, such as Aquadynamic Fish Attractor, Bright Baubles, Nightcrawlers or Shiny Bauble. Equip the pole first (press Fish).",
+  body = "#showtooltip\n/run print(\"Agentcraft: no fishing bait in your bags\")" })
+
+-- Consumables ----------------------------------------------------------------
+-- The same four for every class, on Alt+Q E R T and controller page 2
+-- LT X Y B Left. Item lists, level and skill gates: Macros/Items.lua.
+
+L.Add({ name = "HealPot", category = "consumables", order = 20, iconFile = "INV_Potion_54",
+  tags = { "controller", "solo" }, perCharacter = true, generated = "healpot", untested = true,
+  desc = "Uses your Healthstone, or else the best healing potion you carry and your level allows.",
+  body = "#showtooltip\n/run print(\"Agentcraft: no healing potion in your bags\")" })
+
+L.Add({ name = "ManaPot", category = "consumables", order = 21, iconFile = "INV_Potion_76",
+  tags = { "controller", "solo" }, perCharacter = true, power = "mana", generated = "manapot", untested = true,
+  desc = "Uses your mana gem, or else the best mana potion you carry and your level allows. Not for warriors and rogues (no mana).",
+  body = "#showtooltip\n/run print(\"Agentcraft: no mana potion in your bags\")" })
+
+L.Add({ name = "Bandage", category = "consumables", order = 22, iconFile = "INV_Misc_Bandage_15",
+  tags = { "controller", "solo" }, perCharacter = true, generated = "bandage", untested = true,
+  desc = "Bandages yourself, whatever you target, with the best bandage you carry and your First Aid skill allows.",
+  body = "#showtooltip\n/run print(\"Agentcraft: no bandage you can use in your bags\")" })
+
+L.Add({ name = "Food", category = "consumables", order = 23, iconFile = "INV_Misc_Food_15",
+  tags = { "controller", "solo" }, perCharacter = true, generated = "food", untested = true,
+  desc = "Eats the best food you carry for your level: conjured food first, never raw meat or fish; buff food only when you have nothing else.",
+  body = "#showtooltip\n/run print(\"Agentcraft: no food in your bags\")" })
 
 -- Utility ----------------------------------------------------------------------
 
@@ -55,11 +80,17 @@ L.Add({ name = "Reload", category = "utility", tags = { "interface", "controller
   desc = "Reloads the interface. Saves Agentcraft's snapshot and loads addon changes; the game menu has no reload.",
   body = "/reload" })
 
--- Older Fish texts: neither "Fishing Pole" (0.25) nor "Fishing Poles" (0.26-0.32)
--- matched on WoW Forever; the body now reads the subtype from the client ({POLETYPE}).
+-- Older texts of the item macros, before they were generated (0.25-0.35):
+-- Fish tried every pole by name, Bait every lure. Installed copies of these
+-- show "Update", which moves them to your character macros with the
+-- generated text. Neither "Fishing Pole" (0.25) nor "Fishing Poles"
+-- (0.26-0.32) matched on WoW Forever; Fish reads the subtype from the client.
 L.previous.Fish = {
   "#showtooltip Fishing\n/cast [equipped:Fishing Poles] Fishing\n/stopmacro [equipped:Fishing Poles]\n/equip Fishing Pole\n/equip Strong Fishing Pole\n/equip Darkwood Fishing Pole\n/equip Big Iron Fishing Pole\n/equip Seth's Graphite Fishing Pole",
   "#showtooltip Fishing\n/cast [equipped:Fishing Pole] Fishing\n/stopmacro [equipped:Fishing Pole]\n/equip Fishing Pole\n/equip Strong Fishing Pole\n/equip Darkwood Fishing Pole\n/equip Big Iron Fishing Pole\n/equip Seth's Graphite Fishing Pole",
+}
+L.previous.Bait = {
+  "#showtooltip\n/use Shiny Bauble\n/use Nightcrawlers\n/use Bright Baubles\n/use Aquadynamic Fish Attractor\n/use 16",
 }
 
 -- Retired --------------------------------------------------------------------------
@@ -135,6 +166,8 @@ L.retiredCommon = { ReadyCheck = true, Logout = true, Hearth = true, Growl = tru
 -- Agentcraft wrote, and only when Agentcraft recorded writing that exact
 -- text. Most players write this same Feed Pet or /use macro themselves, so
 -- the shape alone is never enough. A line you added yourself keeps it too.
+-- Eat's successor is the generated Food macro (a new name, so an old Eat
+-- copy is still cleaned up and never mistaken for Food).
 local function OnlyLines(body, allowed)
   for line in (body .. "\n"):gmatch("(.-)\n") do
     local ok = line == ""

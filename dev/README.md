@@ -31,14 +31,14 @@ Options:
 
 **Macros**
 - Errors:
-  - A macro names an item through `/use`, `/equip`, `/equipslot`, `#showtooltip`, or `/cast` of a known item. `/use 13` (a slot number) is allowed.
+  - A hand-written macro names an item through `/use`, `/equip`, `/equipslot`, `#showtooltip`, or `/cast` of a known item (the ActionBars utility lists and the item macro lists in `Macros/Items.lua`). `/use 13` (a slot number) is allowed.
   - A `[mod]`, `[mod:shift]` or `[mod:ctrl]` condition.
   - `@mouseover` or `@cursor`.
   - `/petpassive` or `/petattack` (the owner sends the pet by hand).
   - A body over 255 characters, or a name over 16 characters.
   - The same macro name in two files.
   - A command the game menus already cover, such as `/camp`, `/readycheck`, `/screenshot`, or a `/run` or `/console` that toggles the map, repairs, sells junk or sets camera zoom.
-- Info: a macro without `#showtooltip`, one marked `untested`, `/equip` of poles in `Fish` (an exception the owner approved), and a live macro that is also in `L.retired` (Apply keeps it; the Macros page shows Update while its text equals the retired text).
+- Info: a macro without `#showtooltip`, one marked `untested`, a generated item macro (`generated = "<key>"`: Fish, Bait, HealPot, ManaPot, Bandage, Food) and the items it names (generated from your bags, owner-approved; only its no-item body is in the data, `dev/tests/31_item_macros.lua` checks every generated text), and a live macro that is also in `L.retired` (Apply keeps it; the Macros page shows Update while its text equals the retired text).
 
 **Layouts**
 - Errors:
@@ -53,7 +53,7 @@ Options:
   - A bad controller key, or a use of the fixed Top face buttons.
   - A `macro = "X"` that is missing from the library, is retired, or belongs to another class.
 - Warning: a stance key or offset that isn't the class's (warrior battle 1, defensive 2, berserker 3; druid cat 1, bear 3, moonkin 4; rogue stealth 1; priest shadowform 1), or a stance page on a class without paging.
-- Warning: a keyboard bar `[3]`. Bar 3 is the Alt bar (the Fish and Bait macros once installed, on-use trinkets and the Hearthstone; the Cozy Sleeping Bag goes on a side bar), filled from `ActionBars.utility`, so the layout's `[3]` is never read.
+- Warning: a keyboard bar `[3]`. Bar 3 is the Alt bar (the item macros once installed, on-use trinkets and the Hearthstone; the Cozy Sleeping Bag goes on a side bar), filled from `ActionBars.utility`, so the layout's `[3]` is never read.
 - Info:
   - A back button that repeats a page-1 home (a mirror, allowed).
   - A macro-only home, which stays empty until the macro is installed.

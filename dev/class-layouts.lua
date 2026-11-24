@@ -139,7 +139,7 @@ P("Generated from `addon/Agentcraft/Layouts/*.lua` and `Macros/Data/*.lua` by `l
 P()
 P("## Role guide")
 P()
-P("The keybinds are the same for every class (hard rule): plain keys = Action Bar 1, Shift = Bar 2, Ctrl = Bar 4, Alt = Bar 3 (shared: Fish Alt+F, Bait Alt+G, trinkets Alt+C/V, Hearthstone Alt+4), pet bar on the mouse and Z/X. What sits on a key follows these roles where the class has a fitting spell ([dev/key-roles.md](key-roles.md); the Beast Mastery hunter is the reference):")
+P("The keybinds are the same for every class (hard rule): plain keys = Action Bar 1, Shift = Bar 2, Ctrl = Bar 4, Alt = Bar 3 (shared item macros: HealPot Alt+Q, ManaPot Alt+E, Bandage Alt+R, Food Alt+T, Fish Alt+F, Bait Alt+G; trinkets Alt+C/V, Hearthstone Alt+4), pet bar on the mouse and Z/X. What sits on a key follows these roles where the class has a fitting spell ([dev/key-roles.md](key-roles.md); the Beast Mastery hunter is the reference):")
 P()
 P("| Key | Plain | Shift | Ctrl |")
 P("| --- | --- | --- | --- |")

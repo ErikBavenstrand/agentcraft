@@ -295,6 +295,14 @@ local function Homes(m)
       end
     end
   end
+  -- The shared Alt bar (ActionBars.utility, the same on every class).
+  local AB = ns.modules and ns.modules.actionbars
+  for i, e in ipairs(AB and AB.utility or {}) do
+    if type(e) == "table" and e.macro == m.name and KB_KEYS[i] then
+      out[#out + 1] = { text = "Keyboard:  " .. KeyWords("ALT-" .. KB_KEYS[i]),
+        fn = function() OpenKeyboard(KB_KEYS[i], KB_VIEW["ALT-"]) end }
+    end
+  end
   -- Bar 1's stance pages (the same plain key in that stance).
   for _, st in ipairs(kb and kb.stances or {}) do
     for i, e in pairs(st.entries or {}) do
@@ -428,6 +436,14 @@ local function FillInspector(page, m, pane)
   end
   if m.untested then pane:Row("Untested", "not yet confirmed in game", UI.C.ORANGE) end
   if m.desc and m.desc ~= "" then pane:Text(m.desc) end
+  if m.generated then
+    -- An item macro: Agentcraft keeps its text on your best item.
+    local item = L.GeneratedItem(m)
+    local what = L.GENERATED_WHAT and L.GENERATED_WHAT[m.generated] or "item"
+    pane:Row("Uses", item or ("no " .. what .. " in your bags"), item and UI.C.HIGHLIGHT or UI.C.ORANGE)
+    pane:Text("Updates itself from your bags: once installed, Agentcraft rewrites it when your best " .. what
+      .. " changes (never in combat).", UI.C.GREEN)
+  end
   local req = L.Requirements(m)
   if #req > 0 then
     pane:Section("Requires")

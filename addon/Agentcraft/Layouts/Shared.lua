@@ -7,12 +7,16 @@
 -- Layout.lua merges each page here into the class page of the same number
 -- when a layout resolves, for every spec. A class page never names one of
 -- these buttons [rules]; it keeps only its own class buttons (page 2: the RT
--- layer and LT X B Y Left Right).
+-- layer but RT Up, and LT Right).
 --
 -- Page 2 (Utility):
 --   none  Up Fish, Left Cozy Sleeping Bag, Down Basic Campfire, Right Mount
 --         (the library macro; waits until you install it on the Macros page)
---   LT    A Bait, Up / Down your equipped on-use trinkets
+--   LT    the item layer: A Bait, X HealPot, Y ManaPot, B Bandage,
+--         Left Food (generated item macros, each waiting until you install
+--         it on the Macros page; ManaPot stays empty on warriors and
+--         rogues), Up / Down your equipped on-use trinkets. LT Right is the
+--         class's own.
 --   RT    Up Hearthstone
 --   LT+RT 8 profession slots, filled from your own professions in the stable
 --         order of Layout.PROFESSIONS: 1 first primary (Mining, Alchemy...),
@@ -32,6 +36,10 @@ ns.Layout.RegisterShared({
         title = "Utility",
         ["RT Up"] = { item = "Hearthstone" },
         ["LT A"] = { macro = "Bait" },     -- best fishing bait onto your pole (waits until installed)
+        ["LT X"] = { macro = "HealPot" },  -- Healthstone, else best healing potion (keyboard Alt+Q)
+        ["LT Y"] = { macro = "ManaPot" },  -- mana gem, else best mana potion (keyboard Alt+E)
+        ["LT B"] = { macro = "Bandage" },  -- best bandage on yourself (keyboard Alt+R)
+        ["LT Left"] = { macro = "Food" },  -- best food for your level (keyboard Alt+T)
         ["LT Up"] = { utility = 8 },       -- on-use trinket (bottom)
         ["LT Down"] = { utility = 7 },     -- on-use trinket (top)
         ["none Up"] = { macro = "Fish", "Fishing" },

@@ -461,7 +461,7 @@ function Read-Macros {
       $name = $t.Get('name'); $body = $t.Get('body')
       if ($body -isnot [string]) { Add-Finding ERROR macro-parse "${rel}:$($t.Line)" "macro '$name' has no plain string body; the checker can't read it"; continue }
       $macros.Add([pscustomobject]@{ Name = [string]$name; Body = $body; File = $rel; Line = $t.Line; T = $t
-        Class = $t.Get('class'); Race = $t.Get('race'); Untested = ($t.Get('untested') -eq $true) })
+        Class = $t.Get('class'); Race = $t.Get('race'); Untested = ($t.Get('untested') -eq $true); Generated = $t.Get('generated') })
     }
     foreach ($t in $lit.Tables('\bL\.retired\s*=\s*(?=\{)')) {
       foreach ($k in $t.Hash.Keys) { $retired[[string]$k] = @{ Body = $t.Hash[$k]; Where = "${rel}:$($t.Line)" } }
@@ -482,6 +482,17 @@ function Read-ItemNames {
     }
   }
   foreach ($n in 'Hearthstone', 'Shiny Bauble', 'Nightcrawlers', 'Bright Baubles', 'Aquadynamic Fish Attractor') { $names[$n] = $true }
+  # The item macros' lists (Macros\Items.lua, L.ITEMS = { poles = { { "Name", level = n }, ... }, ... }).
+  $items = Join-Path $Addon 'Macros\Items.lua'
+  if (Test-Path -LiteralPath $items) {
+    $lit = [LuaLit]::new((ReadText $items))
+    foreach ($t in $lit.Tables('\bL\.ITEMS\s*=\s*(?=\{)')) {
+      foreach ($k in $t.Hash.Keys) {
+        $list = $t.Hash[$k]
+        if ($list -is [LuaTable]) { foreach ($e in $list.Arr) { if ($e -is [LuaTable]) { foreach ($s in $e.Strings()) { $names[$s] = $true } } } }
+      }
+    }
+  }
   return $names
 }
 
@@ -498,7 +509,10 @@ function Test-Macro($m, $items) {
     $t = $line.Trim()
     if ($t -eq '') { continue }
     if ($t -match '^#show(tooltip)?\s+(.+)$') {
-      if ($items.ContainsKey($Matches[2].Trim())) { Add-Finding ERROR macro-item $where "$label shows item '$($Matches[2].Trim())' in #showtooltip" }
+      if ($items.ContainsKey($Matches[2].Trim())) {
+        if ($m.Generated) { $fishItems.Add($Matches[2].Trim()) }
+        else { Add-Finding ERROR macro-item $where "$label shows item '$($Matches[2].Trim())' in #showtooltip" }
+      }
       continue
     }
     if ($t.StartsWith('#')) { continue }
@@ -524,8 +538,7 @@ function Test-Macro($m, $items) {
         $tg = $target
         if ($cmd -eq '/equipslot') { $tg = ($target -replace '^\d+\s*', '') }
         if ($tg -match '^\d+(\s+\d+)?$') { Add-Finding INFO macro-slot $where "$label $cmd $tg uses an inventory slot, not an item name (allowed)" }
-        elseif ($m.Name -eq 'Fish' -and $cmd -eq '/equip') { $fishItems.Add($tg) }
-        elseif ($m.Name -eq 'Bait' -and $cmd -eq '/use') { $fishItems.Add($tg) }
+        elseif ($m.Generated) { $fishItems.Add($tg) }
         else { Add-Finding ERROR macro-item $where "$label $cmd $tg names an item; items go on bars as item buttons" }
       }
     }
@@ -542,7 +555,8 @@ function Test-Macro($m, $items) {
       if ($rest -match $MenuRun) { Add-Finding ERROR macro-menu $where "$label /run does what a game menu already does ($($Matches[0]))" }
     }
   }
-  if ($fishItems.Count -gt 0) { Add-Finding INFO macro-item $where "$label names $($fishItems.Count) fishing items: $($fishItems -join ', ') (Fish / Bait exception approved by the owner)" }
+  if ($fishItems.Count -gt 0) { Add-Finding INFO macro-item $where "$label names $($fishItems.Count) items: $($fishItems -join ', ') (generated from your bags, owner-approved)" }
+  if ($m.Generated) { Add-Finding INFO macro-generated $where "$label is a generated item macro ('$($m.Generated)', Macros\Items.lua): its text names the best item you carry and Agentcraft rewrites it (generated from your bags, owner-approved); this body is its no-item text" }
   if ($m.Untested) { Add-Finding INFO macro-untested $where "$label is marked untested (needs an in-game confirmation)" }
 }
 
@@ -1126,7 +1140,9 @@ function Test-LiveGame($lib, $retired) {
     }
   }
   foreach ($name in $installed.Keys) {
-    if ($lib.ContainsKey($name)) {
+    if ($lib.ContainsKey($name) -and $lib[$name].Generated) {
+      # A generated item macro's text follows your bags; it never matches the library body.
+    } elseif ($lib.ContainsKey($name)) {
       $want = ($lib[$name].Body -replace '\s+$', '')
       $have = ($installed[$name].Body -replace '\s+$', '')
       if ($want -ne $have) { Add-Finding INFO live-macro-outdated "$($installed[$name].Scope) macros-cache.txt" "installed macro '$name' differs from the library (Update on the Macros page)" }
