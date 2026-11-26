@@ -1,7 +1,7 @@
 -- A level 60 Undead warlock with the WoW Forever spellbook (Banes, Sayaad).
 -- Format: dev/layout-format.md ("Fixture format"). Spell IDs are Classic
--- ranks where one exists; Forever-only spells (Bane of Havoc, Wrack, Summon
--- Sayaad, Bane names) use stand-in IDs. Exact IDs don't matter to the addon,
+-- ranks where one exists; Forever-only spells (Bane of Havoc, Wrack,
+-- Incinerate) use stand-in IDs; names follow Wowhead's Forever guides. Exact IDs don't matter to the addon,
 -- only that names and IDs are consistent.
 return {
   class = { "Warlock", "WARLOCK", 9 },
@@ -34,11 +34,19 @@ return {
     { name = "Create Soulstone", id = 20757 },   -- 18
     { name = "Searing Pain", id = 17923 },       -- 18
     { name = "Rain of Fire", id = 11678 },       -- 20
-    { name = "Summon Sayaad", id = 712 },        -- 20 (quest)
+    { name = "Summon Succubus", id = 712 },      -- 20 (quest; the Sayaad)
     { name = "Demon Armor", id = 11735 },
     { name = "Unending Breath", id = 5697 },
     { name = "Eye of Kilrogg", id = 126 },
-    { name = "Enslave Demon", id = 11726 },
+    { name = "Subjugate Demon", id = 11726 },    -- 30 (Classic: Enslave Demon)
+    { name = "Curse of Recklessness", id = 704 }, -- 14
+    { name = "Ritual of Summoning", id = 698 },  -- 20
+    { name = "Sense Demons", id = 5500 },        -- 24
+    { name = "Detect Invisibility", id = 11743 }, -- 26
+    { name = "Banish", id = 18647 },             -- 28
+    { name = "Create Firestone", id = 17953 },   -- 28
+    { name = "Create Spellstone", id = 17728 },  -- 36
+    { name = "Summon Felsteed", id = 5784 },     -- 40
     { name = "Drain Mana", id = 11704 },         -- 24
     { name = "Shadow Ward", id = 28610 },
     { name = "Hellfire", id = 11684 },           -- 30
@@ -49,27 +57,30 @@ return {
     { name = "Soul Fire", id = 17924 },          -- 48
     { name = "Inferno", id = 1122 },             -- 50
     { name = "Bane of Doom", id = 603 },         -- 60
+    { name = "Shoot", id = 5019 },               -- wand
     { name = "Will of the Forsaken", id = 7744 },
     { name = "Cannibalize", id = 20577 },
   },
 
   -- Talent spells: the game knows them, the character hasn't learned them.
+  -- Rows from dev/forever-talents.md (row r = level 10 + 5r).
   catalog = {
-    { name = "Siphon Life", id = 18881 },        -- Affliction
-    { name = "Amplify Curse", id = 18288 },      -- Affliction
-    { name = "Wrack", id = 1230001 },            -- Affliction 31 (Forever)
-    { name = "Fel Domination", id = 18708 },     -- Demonology
-    { name = "Demonic Sacrifice", id = 18788 },  -- Demonology
-    { name = "Soul Link", id = 19028 },          -- Demonology
-    { name = "Shadowburn", id = 18871 },         -- Destruction
-    { name = "Conflagrate", id = 18932 },        -- Destruction
-    { name = "Bane of Havoc", id = 1230002 },    -- Destruction 34 (Forever)
-    { name = "Incinerate", id = 1230003 },       -- Destruction 31 (Forever)
+    { name = "Siphon Life", id = 18881 },        -- Affliction row 4 (30)
+    { name = "Amplify Curse", id = 18288 },      -- Affliction row 2 (20)
+    { name = "Wrack", id = 1230001 },            -- Affliction row 6 (40, Forever)
+    { name = "Fel Domination", id = 18708 },     -- Demonology row 3 (25)
+    { name = "Demonic Sacrifice", id = 18788 },  -- Demonology row 2 (20)
+    { name = "Soul Link", id = 19028 },          -- Demonology row 4 (30)
+    { name = "Shadowburn", id = 18871 },         -- Destruction row 2 (20)
+    { name = "Conflagrate", id = 18932 },        -- Destruction row 3 (25)
+    { name = "Bane of Havoc", id = 1230002 },    -- Destruction row 4 (30, Forever)
+    { name = "Curse of Exhaustion", id = 18223 }, -- Affliction row 3 (25)
+    { name = "Incinerate", id = 1230003 },       -- Destruction row 6 (40, Forever)
   },
 
   -- Other real spell names the layouts name (rules only, no ID).
   otherSpells = {
-    "Demon Skin", "Summon Succubus",
+    "Demon Skin", "Summon Incubus",
     "Fishing", "Basic Campfire", "Cooking", "First Aid", "Engineering",
     "Smelting", "Find Minerals", "Find Herbs", "Skinning", "Alchemy", "Blacksmithing",
     "Leatherworking", "Tailoring", "Enchanting", "Disenchant",

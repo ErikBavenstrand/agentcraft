@@ -1,7 +1,7 @@
 -- A level 60 Human Combat rogue (swords, Riposte / Blade Flurry /
 -- Adrenaline Rush). Format: dev/layout-format.md ("Fixture format"). Spell
 -- IDs are Classic ranks; exact IDs don't matter to the addon, only that
--- names and IDs are consistent. Shank and Mutilate are Forever spells with
+-- names and IDs are consistent. Shank, Mutilate and Death Mark are Forever spells with
 -- made-up IDs here. Fields left out (items, bags, equipped, flyouts,
 -- professions) get defaults in harness.lua: a Hearthstone in the backpack.
 return {
@@ -62,6 +62,7 @@ return {
     { name = "Preparation", id = 14185 },
     { name = "Premeditation", id = 14183 },
     { name = "Mutilate", id = 1300002 },
+    { name = "Death Mark", id = 1300003 },
   },
 
   -- Profession spells the shared Utility page names (rules only).

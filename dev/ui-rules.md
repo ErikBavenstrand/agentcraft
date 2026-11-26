@@ -46,6 +46,17 @@ The ground truth is an in-game capture (`/ac capture`, see dev/README.md).
 17. Gamepad focus is a pre-made highlight texture toggled on focus change, using `gamepad-*` atlases.
 18. Button prompts use Blizzard's glyph lookup (InputIconTextureFrameTemplate / input icon utils), not hard-coded glyph texture paths. Space stacked glyphs 4 px apart.
 
+## Controller coverage (owner request, 2026-11-24: "make sure Agentcraft is COMPLETELY controller supported")
+
+23. Everything works with a controller alone, on every page, view, sheet, popup and sub-view:
+    - Every interactive frame is a focus node (`UI.Node`), reachable with the D-pad from the page's landing focus, with a way back (no dead ends), and A does something on it. A read-only node says so with `acPromptA = false` (or is a disabled `acReadable` node), and its A prompt hides.
+    - Every other Button, CheckButton, EditBox, or frame with an OnMouseDown / OnMouseUp script is out of the Gamepad UI's reach: `UI.MarkIgnored(f)` for decoration and mouse-only parts (scroll bars, steppers inside a row, read-only text boxes, hover-only lines), `UI.MarkContainer(f)` for a frame that takes the mouse but holds nodes (the stage, a pad bar). Never `UI.MarkIgnored` a frame that holds nodes: it hides them from the Gamepad UI too.
+    - The A prompt names what A does on the focused node (`acPromptA`, a string or a function of the node).
+    - B backs out one layer (typing in the search box, the Review sheet, a sub-view, a pin, the Inspector), then closes. LB / RB switch pages.
+    - Mouse-only actions (dragging the window, Pick Up, hover tooltips) have a pad route or say why they're not needed: Options › Window for size and position, Review & Apply places macros, the Inspector shows what a tooltip would.
+    - The window binds nothing by default. It opens with `/ac`, Key Bindings › Agentcraft (Bindings.xml), the minimap's addon list (TOC `AddonCompartmentFunc`) or the Agentcraft macro.
+24. With the Gamepad UI on, SmartNavigation drives the D-pad and A. UI/Input.lua gives each node a jump override per direction that runs `Focus:Move`, and `OnSmartNavClick` that runs `Focus:Activate`, so the Deck walks the same focus graph the tests walk. Those overrides are insecure and SmartNavigation refuses them in combat, so they come off at `PLAYER_REGEN_DISABLED` and go back on after combat. `dev/tests/14_focus.lua` checks all of rule 23 with the SmartNavigation model in `dev/harness/focuscheck.lua` (`FC.PadCoverage`).
+
 ## Readability and hover (owner feedback, 2026-11-15)
 
 19. The Inspector uses the same dark pane on every page; no parchment under it. UI.C colours (gold, red, orange, grey, green) are for dark backgrounds.

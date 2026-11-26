@@ -251,6 +251,18 @@ The warnings are real UI findings:
 
 The focus checks walk the page with real moves (`dev/harness/focuscheck.lua`, also used by `dev/tests/14_focus.lua`). The walk stands on each node the way a player does (set it, let the Inspector settle), presses each direction, presses a stepping row again until it leaves, keys Inspector rows by `acId` because they are pooled, and puts the page's view state, the settings and the scale back afterwards.
 
+### Controller coverage (`dev/tests/14_focus.lua`)
+
+The "pad only" tests boot with the Gamepad UI on and a mock `SmartNavigation`, then walk every page, every view (X), the Keyboard page's list mode, the Macros page's empty search, the Options log and each page's Review sheet, plus the warrior's Spec and Bar 1 page pickers. For each state, and for each node's own Inspector, they fail on:
+- a node the D-pad never reaches, a dead end, or an Inspector the pad can't enter;
+- a frame the Gamepad UI can stop on that is not a focus node (`FC.PadCoverage(env).phantoms`). The model follows SmartNavigation's `Utility.FindButtons` in the forever branch: shown Buttons, CheckButtons, EditBoxes and frames with an OnMouseDown or OnMouseUp script, unless `UI.MarkIgnored` covers them or `UI.MarkContainer` marks the frame itself. Fix one with `UI.MarkIgnored`, `UI.Node`, or `acDecorative = true`;
+- a focus node an ignore mark hides (`hidden`), and a node A does nothing on (`inert`; mark a read-only one `acPromptA = false`);
+- a node without its SmartNavigation wiring: a jump override for each direction and `OnSmartNavClick` (UI/Input.lua).
+
+Other tests there cover A on a key (pin, then step into the Inspector), the overrides coming off in combat, the More... tag list, B while typing in the search box, A / B on a confirm dialog without the Gamepad UI, and the three ways to open the window: the addon compartment functions named in the TOC, each binding in `Bindings.xml` (its body runs in the mock), and the Agentcraft macro and its page 3 home for every class and spec.
+
+The harness records `SmartNavigation_MarkFrameIgnored` (`_snIgnored`, `_snIgnoredSelf`), `SmartNavigation_MarkFrameIgnoredContainerFrame` (`_snContainer`) and `SmartNavigation_AddJumpNavigationOverride` (`_snOverrides[dirKey]`) on the frame. `SmartNavigation` itself stays absent unless a test sets `W.api.SmartNavigation` in `setup`.
+
 What is emulated and what is approximated:
 - Emulated: anchors, sizes, scale, alpha, strata, frame level and draw-layer order (highlight layers are not drawn), shown state (hidden frames are skipped), scroll-frame and `SetClipsChildren` clipping, button states (normal, disabled, checked), colour textures, vertex colour, desaturation, additive blending, texture coordinates, `|c`, `|T` and `|n` markup.
 - Approximated: fonts (Friz Quadrata and Arial Narrow aren't bundled; the page falls back to Palatino/Georgia and Arial), text width (a per-glyph table within about 5% of the fallback fonts), templates (`frames.lua` builds them from classic-style art with flat-colour fallbacks), backdrops (a CSS fill and border), texture file IDs (mapped through `dev/render/fileids.lua`), and tiling atlases (repeated at their own size only when the atlas spans its sheet along the tiled axis; otherwise stretched).

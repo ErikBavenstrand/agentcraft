@@ -279,12 +279,34 @@ local function Primary(page)
   end
 end
 
+-- What A does on node, for the prompt bar: node.acPromptA (a string, or a
+-- function(node) returning one; false hides the prompt), else the page's
+-- label. A disabled read-only node (acReadable: a link with nowhere to go,
+-- the last page's Next button) hides it, since A does nothing there.
+local function PromptA(node, pageLabel)
+  if not node then return pageLabel end
+  local p = rawget(node, "acPromptA")
+  if type(p) == "function" then
+    local ok, v = pcall(p, node)
+    p = ok and v or nil
+  end
+  if p == false then return nil end
+  if node.IsEnabled and not node:IsEnabled() and node.acReadable then return nil end
+  return p or pageLabel
+end
+
 local function PromptLabels(page)
   local labels = { PAD1 = "Select", PAD2 = (Esc.CanBack and Esc.CanBack() or Esc.HasLayers()) and "Back" or "Close" }
   if page and page.views and #page.views > 1 then labels.PAD3 = page.viewLabel or "View" end
   local list = page and Resolve(page.prompts, page)
   if type(list) == "table" then
     for _, p in ipairs(list) do labels[p.key] = p.label end
+  end
+  labels.PAD1 = PromptA(Focus.current, labels.PAD1)
+  -- A controller without the Gamepad UI answers our own confirm dialogs
+  -- with A and B (UI.AnswerPopup); say so while one is open.
+  if UI.OpenPopup and UI.OpenPopup() and UI.PromptMode() == "pad" and not UI.GamepadUI() then
+    labels.PAD1, labels.PAD2 = YES or "Yes", NO or "No"
   end
   return labels
 end
@@ -321,6 +343,7 @@ local function LayoutPrompts()
       else SetGlow(b, false) end
     elseif key == "PAD1" then
       show = mode ~= "mouse" and labels.PAD1 ~= nil
+      b._acLabel = labels.PAD1
       if show then b:SetLabel(labels.PAD1) end
     else
       show = labels[key] ~= nil
@@ -891,6 +914,9 @@ local function BuildHeader()
   summary:SetPoint("RIGHT")
   summary:SetJustifyH("LEFT")
   summary:SetWordWrap(false)
+  -- Hover-only (the full text is the page's default Inspector content), so
+  -- not a Gamepad UI stop.
+  UI.MarkIgnored(summaryBtn)
   summaryBtn:SetScript("OnEnter", function(self)
     local text = summary:GetText() or ""
     if text == "" or not current then return end
@@ -986,6 +1012,9 @@ local function BuildStage()
   stage:SetPoint("BOTTOMRIGHT", -(PANE_W + 16), STAGE_BOTTOM)
   stage.acZone = "stage"
   UI.Name(stage, "acStage")
+  -- Right-click Back makes the stage a mouse target; on the Gamepad UI only
+  -- the nodes inside it are stops.
+  UI.MarkContainer(stage)
   -- Backdrop: the inset's own Blizzard background. The character sheet's
   -- General-BG (made for a 398 px pane) and the 197x355 class art were
   -- stretched over 706x506 here, which read as smeared, "weird" textures;
@@ -1089,6 +1118,12 @@ local function BuildPromptBar()
   status:SetScript("OnLeave", GameTooltip_Hide)
   UI.Node(status, { style = "button", id = "status" })
   status.acReadable = true
+  -- A dismisses the last result (the Inspector shows all of it on focus);
+  -- with nothing to dismiss, A has no job and its prompt hides.
+  status.acActivate = function(self)
+    if self.lines and #self.lines > 0 then HideToast(); UI.Sound("view") end
+  end
+  status.acPromptA = function(self) return (self.lines and #self.lines > 0) and "Dismiss" or false end
   status.acInspect = function(self, p)
     if not self.lines or #self.lines == 0 then return p:Empty("No result yet. What an action prints shows here.") end
     p:Header(nil, "Last result", self.kind == "error" and "Error" or nil)
@@ -1211,6 +1246,9 @@ local function BuildLayers()
     r.head:SetJustifyH("CENTER")
     r.head:SetWordWrap(false)
     r.acReadable = true
+    -- Read-only: A has no job on a change row (Y applies, B goes back), so
+    -- the A prompt hides there.
+    r.acPromptA = false
     UI.Node(r, { style = "row" })
     return r
   end, function(r, d, i)
@@ -1301,6 +1339,9 @@ local function Build()
     handle:SetHeight(22)
   end
   handle:EnableMouse(true)
+  -- Mouse-only: dragging has no pad equivalent beyond Options › Window
+  -- (scale, Reset position), so the Gamepad UI never stops on the title bar.
+  UI.MarkIgnored(handle)
   handle:RegisterForDrag("LeftButton")
   handle:SetScript("OnDragStart", function() frame:StartMoving() end)
   handle:SetScript("OnDragStop", function()
@@ -1318,7 +1359,20 @@ local function Build()
 
   -- Input: the shared focus, Back stack, override bindings, Gamepad UI glue.
   Focus:SetHost(frame, function() return current end)
-  Focus.onInspect = InspectNode
+  -- The Inspector's new links and buttons reach the Gamepad UI as they
+  -- appear (it rebuilds after the focus settles, without a page refresh).
+  Focus.onInspect = function(node)
+    InspectNode(node)
+    Input.RefreshSmartNav()
+  end
+  -- The A prompt names what A does on the focused node; re-flow the bar
+  -- only when that label changes.
+  Focus.onFocus = function()
+    if not frame:IsShown() or not current then return end
+    local want = PromptLabels(current).PAD1
+    local b = prompts.PAD1
+    if b and (b._acLabel ~= want or (want ~= nil) ~= b:IsShown()) then LayoutPrompts() end
+  end
   -- Focus moved between zones (stage, Inspector, ...): re-aim the right stick
   -- at the page's ScrollRegion for that zone and refresh the B label, so
   -- "Back" shows while B would step out of the Inspector.
@@ -1450,6 +1504,52 @@ function ns.OpenPage(id, focusId)
       if n.acId == focusId then Focus:Set(n, Focus.source or "key") break end
     end
   end
+end
+
+-- Ways to open the window without typing /ac (owner request, 2026-11-24:
+-- "COMPLETELY controller supported"):
+--   * Key Bindings › Agentcraft (Bindings.xml): Toggle Agentcraft and one
+--     binding per page; bind a key, a pad button or a chord there. Nothing is
+--     bound by default (the back paddles stay free; every class gets the same
+--     binds).
+--   * The minimap's addon list (Blizzard_Minimap AddonCompartment.lua on
+--     Forever reads ## AddonCompartmentFunc from the TOC): click Agentcraft.
+--   * The library macro "Agentcraft" (/ac), at home on controller page 3
+--     LT+RT Y for every class once installed.
+-- Each runs plain addon code (Show/Hide, never ShowUIPanel) and works in
+-- combat, where the window only shows the plan.
+--
+-- page: nil toggles the window; a page id opens that page, and closes the
+-- window when it is already open on it.
+function ns.OpenFromBinding(page)
+  if not page then return ns.ToggleUI() end
+  if frame and frame:IsShown() and current and current.id == page then return HideWindow() end
+  ns.OpenPage(page)
+end
+
+-- Key Bindings labels (BINDING_HEADER_* / BINDING_NAME_*; the binding UI
+-- reads them through _G, Blizzard_SettingsDefinitions_Frame/Keybindings.lua).
+BINDING_HEADER_AGENTCRAFT = "Agentcraft"
+BINDING_NAME_AGENTCRAFT_TOGGLE = "Toggle Agentcraft"
+BINDING_NAME_AGENTCRAFT_KEYBOARD = "Agentcraft: Keyboard page"
+BINDING_NAME_AGENTCRAFT_CONTROLLER = "Agentcraft: Controller page"
+BINDING_NAME_AGENTCRAFT_MACROS = "Agentcraft: Macros page"
+
+-- Addon compartment (## AddonCompartmentFunc / FuncOnEnter / FuncOnLeave):
+-- the game calls these globals by name with (addonName, buttonName) and
+-- (addonName, menuButton).
+function Agentcraft_OnAddonCompartmentClick()
+  ns.ToggleUI()
+end
+function Agentcraft_OnAddonCompartmentEnter(_, button)
+  if not (GameTooltip and button) then return end
+  GameTooltip:SetOwner(button, "ANCHOR_LEFT")
+  GameTooltip:SetText("Agentcraft")
+  GameTooltip:AddLine("Open or close the window. /ac and Key Bindings › Agentcraft do too.", 1, 1, 1, true)
+  GameTooltip:Show()
+end
+function Agentcraft_OnAddonCompartmentLeave()
+  if GameTooltip then GameTooltip:Hide() end
 end
 
 -- Dev helper: opens every page in turn and takes a game screenshot of each,

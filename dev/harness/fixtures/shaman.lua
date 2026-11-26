@@ -1,6 +1,7 @@
 -- A level 60 Orc Enhancement shaman (WoW Forever spell list, research
--- 2026-11: Icy Veins, Warcraft Tavern, Method). Format: dev/layout-format.md
--- ("Fixture format"). Spell IDs are Classic ranks where Classic has the spell;
+-- 2026-11: Wowhead WoW Forever shaman guides, Warcraft Tavern, Method).
+-- Format: dev/layout-format.md ("Fixture format"). Spell IDs are Classic
+-- ranks where Classic has the spell;
 -- Forever-only spells (Fire Nova as a spell, the Call spells, Totemic Call,
 -- Rage of the Farseer, Lightning Mastery) use made-up 12400xx IDs. Exact IDs
 -- don't matter to the addon, only that names and IDs are consistent.
@@ -44,6 +45,7 @@ return {
     -- Totems: earth
     { name = "Stoneskin Totem", id = 10408 },
     { name = "Earthbind Totem", id = 2484 },
+    { name = "Stoneclaw Totem", id = 10428 },
     { name = "Strength of Earth Totem", id = 25361 },
     { name = "Tremor Totem", id = 8143 },
     -- Totems: fire
@@ -93,6 +95,9 @@ return {
 
   -- Spells the game knows but this character hasn't learned (talents of the
   -- other trees): C_Spell.GetSpellInfo finds them, IsPlayerSpell doesn't.
+  -- Rows (dev/forever-talents.md): Lightning Mastery Ele row 6 = 40; Water
+  -- Shield Resto row 2 = 20, Mana Tide Totem row 3 = 25, Nature's Swiftness
+  -- row 4 = 30, Riptide row 6 = 40.
   catalog = {
     { name = "Lightning Mastery", id = 1240009 },
     { name = "Riptide", id = 1240010 },

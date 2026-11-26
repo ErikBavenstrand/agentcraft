@@ -1781,8 +1781,27 @@ function M.InstallUI(W, A)
   A.GameTooltip_AddNormalLine = function(tt, text) tt:AddLine(text) end
   A.GameTooltip_AddHighlightLine = function(tt, text) tt:AddLine(text) end
   A.GameTooltip_AddColoredLine = function(tt, text) tt:AddLine(text) end
-  A.SmartNavigation_MarkFrameIgnored = noop
+  -- SmartNavigation marks: recorded on the frame, so dev/harness/focuscheck.lua
+  -- can model which frames the Gamepad UI stops on (FC.SmartNavTargets).
+  A.SmartNavigation_MarkFrameIgnored = function(f, dontPropagate)
+    if type(f) == "table" then rawset(f, dontPropagate and "_snIgnoredSelf" or "_snIgnored", true) end
+  end
+  A.SmartNavigation_MarkFrameIgnoredContainerFrame = function(f)
+    if type(f) == "table" then rawset(f, "_snContainer", true) end
+  end
   A.SmartNavigation_MarkFrameSubSection = noop
+  -- Jump overrides (Utility.lua): [dirKey] = frame or function, on the frame.
+  A.SMART_NAV_INPUT_DIRECTION = { UP = { dirKey = "Up", x = 0, y = 1 }, DOWN = { dirKey = "Down", x = 0, y = -1 },
+    LEFT = { dirKey = "Left", x = -1, y = 0 }, RIGHT = { dirKey = "Right", x = 1, y = 0 } }
+  A.SmartNavigation_AddJumpNavigationOverride = function(f, dir, target)
+    if type(f) ~= "table" or type(dir) ~= "table" then return end
+    local o = rawget(f, "_snOverrides") or {}
+    rawset(f, "_snOverrides", o)
+    o[dir.dirKey] = target
+  end
+  A.SmartNavigation_ClearJumpNavigationOverrides = function(f)
+    if type(f) == "table" then rawset(f, "_snOverrides", nil) end
+  end
   A.ScrollUtil = { RegisterScrollBoxWithScrollBar = noop, InitScrollBoxListWithScrollBar = noop }
   A.MinimalSliderWithSteppersMixin = { Event = { OnValueChanged = "OnValueChanged" } }
   A.C_InputInterfaceStyle = { GetCurrentStyle = function() return W.gamepadUI and 1 or 0 end }

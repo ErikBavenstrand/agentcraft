@@ -12,9 +12,9 @@ local CLASSES = {
 }
 local KEYS = { "Q", "E", "R", "T", "F", "G", "C", "V", "1", "2", "3", "4" }
 local ROLE = {
-  "main attack", "DoT / debuff", "big hitter", "signature",
-  "melee / builder", "proc", "escape", "snare",
-  "opener", "main AoE", "interrupt", "ground AoE",
+  "rotation 1", "rotation 2", "rotation 3", "rotation 5",
+  "rotation 4", "proc", "mobility", "snare",
+  "opener", "main AoE", "interrupt", "second AoE",
 }
 local SHIFT_ROLE = {
   "self-heal", "spec defensive", "burst", "spec control",
@@ -23,9 +23,9 @@ local SHIFT_ROLE = {
 }
 -- Controller page 1 in key-roles order: button, role.
 local PAD = {
-  { "RT A", "Q" }, { "RT X", "E" }, { "RT Right", "R" }, { "RT Left", "T" },
-  { "LT A", "F" }, { "LT X", "G" }, { "LT Y", "C" }, { "LT B", "V" },
-  { "RT Up", "1" }, { "RT Y", "2" }, { "RT B", "3" }, { "RT Down", "4" },
+  { "RT A", "Q" }, { "RT X", "E" }, { "RT Y", "R" }, { "RT B", "F" },
+  { "LT A", "T" }, { "LT X", "G" }, { "LT B", "3" }, { "LT Y", "2" },
+  { "RT Up", "1" }, { "RT Down", "4" }, { "RT Left", "C" }, { "RT Right", "V" },
   { "LT Up", "Shift+Q" }, { "LT Right", "Shift+E" }, { "LT Left", "Shift+T" }, { "LT Down", "Shift+F" },
   { "LT+RT A", "Shift+V" }, { "LT+RT X", "Shift+G" }, { "LT+RT B", "racial" }, { "LT+RT Y", "Shift+R" },
   { "LT+RT Up", "Ctrl+Q" }, { "LT+RT Down", "Ctrl+E" }, { "LT+RT Left", "Ctrl+R" }, { "LT+RT Right", "Ctrl+T" },
@@ -139,7 +139,7 @@ P("Generated from `addon/Agentcraft/Layouts/*.lua` and `Macros/Data/*.lua` by `l
 P()
 P("## Role guide")
 P()
-P("The keybinds are the same for every class (hard rule): plain keys = Action Bar 1, Shift = Bar 2, Ctrl = Bar 4, Alt = Bar 3 (shared item macros: HealPot Alt+Q, ManaPot Alt+E, Bandage Alt+R, Food Alt+T, Fish Alt+F, Bait Alt+G; trinkets Alt+C/V, Hearthstone Alt+4), pet bar on the mouse and Z/X. What sits on a key follows these roles where the class has a fitting spell ([dev/key-roles.md](key-roles.md); the Beast Mastery hunter is the reference):")
+P("The keybinds are the same for every class (hard rule): plain keys = Action Bar 1, Shift = Bar 2, Ctrl = Bar 4, Alt = Bar 3 (shared item macros: HealPot Alt+Q, ManaPot Alt+E, Bandage Alt+R, Food Alt+T, Fish Alt+F, Bait Alt+G; trinkets Alt+C/V, Hearthstone Alt+4), pet bar on the mouse and Z/X. Each spec's rotation fills the slots in press-frequency order ([dev/key-roles.md](key-roles.md)):")
 P()
 P("| Key | Plain | Shift | Ctrl |")
 P("| --- | --- | --- | --- |")
@@ -147,8 +147,8 @@ local CTRL_ROLE = { "secondary attack / debuff", "secondary debuff", "secondary 
 for i = 1, 12 do P(("| %s | %s | %s | %s |"):format(KEYS[i], ROLE[i], SHIFT_ROLE[i], CTRL_ROLE[i])) end
 P()
 P("- Stance pages (warrior stances, druid forms, rogue Stealth, Shadowform) keep the roles; the stance only changes which spell fills one.")
-P("- Healers (Holy paladin, Discipline and Holy priest, Restoration shaman and druid): heals on plain Q E R T and 1 (main heal, HoT, big heal, spec heal, group heal), damage on Shift Q E R T; F G C V and Shift F G C V keep their roles.")
-P("- Controller page 1 mirrors the keyboard: RT = plain Q E R T 1 2 3 4, LT face = plain F G C V, LT D-pad = Shift Q E T F, LT+RT = Shift V G R, the racial and Ctrl Q E R T, no trigger = radials and basics. Page 2 is utility: the class's own buttons (resurrects, buffs, portals...) plus the shared buttons below, page 3 pet and Steam Deck extras plus overflow.")
+P("- Tanks: threat priority, taunt, interrupt and AoE threat fill the rotation slots. Healers (Holy paladin, Discipline and Holy priest, Restoration shaman and druid): heals and dispel fill the rotation slots; damage moves a tier down.")
+P("- Controller page 1: the rotation on face buttons (the left thumb steers, so D-pad presses stop you): RT A X Y B = plain Q E R F, LT A X B Y = plain T G 3 2; RT D-pad = plain 1 4 C V; LT D-pad = Shift Q E T F; LT+RT = Shift V G R, the racial and Ctrl Q E R T; no trigger = radials and basics. Page 2 is utility: the class's own buttons (resurrects, buffs, portals...) plus the shared buttons below, page 3 pet and Steam Deck extras plus overflow.")
 P()
 Load("Layouts/Shared.lua")
 local sharedPage2 = sharedDef and sharedDef.controller and sharedDef.controller.pages and sharedDef.controller.pages[2] or {}

@@ -488,7 +488,9 @@ local function ScaleRow(page, parent, y, zebra)
   end, 150)
   r.slider:SetPoint("RIGHT", r, "RIGHT", -46, 0)
   r.label:SetPoint("RIGHT", r.slider, "LEFT", -8, 0)
-  -- SmartNavigation lands on the row, not on the slider or its steppers.
+  -- SmartNavigation lands on the row, not on the slider or its steppers
+  -- (Left / Right on the row step the scale).
+  UI.MarkIgnored(r.slider)
   if type(r.slider.Slider) == "table" then UI.MarkIgnored(r.slider.Slider); FocusOnClick(r, r.slider.Slider) end
   FocusOnClick(r, r.slider)
   FocusOnClick(r, r.slider.Back)
@@ -850,7 +852,12 @@ local function BuildLogView(page, stage)
   -- controls has focus (its Back / Clear Log stay put while you move).
   back.acInspect, clear.acInspect = well.acInspect, well.acInspect
   -- One row: Back <-> Clear Log, then on to the Inspector.
-  back.navRight = function() if clear:IsShown() and clear:IsEnabled() then return clear end end
+  -- With an empty log Clear Log is disabled: Right goes straight on to the
+  -- Inspector (the pad found no way in from Back before).
+  back.navRight = function(self, dir)
+    if clear:IsShown() and clear:IsEnabled() then return clear end
+    return NearestInspectorNode(self, dir)
+  end
   clear.navLeft = back
   clear.navRight = NearestInspectorNode
 end

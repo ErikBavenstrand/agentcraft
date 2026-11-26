@@ -587,7 +587,12 @@ function UI.ScrollList(parent, rowHeight, makeRow, fillRow)
     if not f or F.setting or self.fixing or f.acScroll ~= self or self:IsRowVisible(f) then return end
     self.fixing = true
     for _, r in ipairs(self:Nodes()) do
-      if self:IsRowVisible(r) then F:Set(r, F.source == "mouse" and "mouse" or "key", true, true) break end
+      if self:IsRowVisible(r) then
+        F:Set(r, F.source == "mouse" and "mouse" or "key", true, true)
+        -- The Gamepad UI cursor follows (a right-stick scroll moved focus).
+        if ns.Input and ns.Input.PointSmartNav then ns.Input.PointSmartNav(r) end
+        break
+      end
     end
     self.fixing = nil
   end

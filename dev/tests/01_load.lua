@@ -28,6 +28,13 @@ test("only the expected globals are set", function()
   local allowed = {
     Agentcraft = true, AgentcraftDB = true, AgentcraftCharDB = true,
     SLASH_AGENTCRAFT1 = true, SLASH_AGENTCRAFT2 = true,
+    -- Ways to open the window with a controller (UI/Window.lua): the addon
+    -- compartment calls these by name (TOC), and the Key Bindings UI reads
+    -- the labels for Bindings.xml.
+    Agentcraft_OnAddonCompartmentClick = true, Agentcraft_OnAddonCompartmentEnter = true,
+    Agentcraft_OnAddonCompartmentLeave = true, BINDING_HEADER_AGENTCRAFT = true,
+    BINDING_NAME_AGENTCRAFT_TOGGLE = true, BINDING_NAME_AGENTCRAFT_KEYBOARD = true,
+    BINDING_NAME_AGENTCRAFT_CONTROLLER = true, BINDING_NAME_AGENTCRAFT_MACROS = true,
     -- Nothing else: ns.Capture no longer swaps print, and SnapshotCached no
     -- longer replaces ChatFrame_DisplayTimePlayed.
   }

@@ -80,6 +80,10 @@ L.Add({ name = "Reload", category = "utility", tags = { "interface", "controller
   desc = "Reloads the interface. Saves Agentcraft's snapshot and loads addon changes; the game menu has no reload.",
   body = "/reload" })
 
+L.Add({ name = "Agentcraft", category = "utility", tags = { "interface", "controller" }, order = 71, iconFile = "INV_Gizmo_02",
+  desc = "Opens or closes this window, so a controller reaches it with one button (controller page 3, LT+RT Y).",
+  body = "/ac" })
+
 -- Older texts of the item macros, before they were generated (0.25-0.35):
 -- Fish tried every pole by name, Bait every lure. Installed copies of these
 -- show "Update", which moves them to your character macros with the
@@ -184,6 +188,12 @@ L.retiredShapes = {
     return L.Wrote("Feed", b) and b:find("/cast Feed Pet", 1, true) and OnlyLines(b, { "#showtooltip", "/cast Feed Pet", "/use " }) or false
   end,
 }
+-- Druid controller form macros (owner, 2026-11-26): page 1 now holds the cat
+-- and bear kits as plain spells. Any text Agentcraft wrote goes.
+for _, n in ipairs({ "FormAttack", "FormDoT", "FormBig", "FormFill", "FormSig", "FormOpen",
+  "FormStun", "FormArea", "FormProc", "FormMove", "FormSnare" }) do
+  L.retiredShapes[n] = function(b) return L.Wrote(n, b) end
+end
 
 -- More utility (2026-11-22). Sources: warcraft.wiki.gg API_C_MountJournal.SummonByID
 -- (lists Forever 1.60.1) and API_GetInventoryItemCount (ammo slot).

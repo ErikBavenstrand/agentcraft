@@ -55,6 +55,7 @@ return {
     { name = "Mind Vision", id = 10909 },
     { name = "Shackle Undead", id = 10955 },
     { name = "Levitate", id = 1706 },
+    { name = "Binding Heal", id = 1240774 }, -- Wowhead Forever spell=1240774: trainer spell, requires level 56
     -- Undead priest spells (racial quests, levels 10 and 20).
     { name = "Touch of Weakness", id = 19266 },
     { name = "Dark Sacrifice", id = 1250002 },
@@ -65,7 +66,9 @@ return {
     { name = "Basic Campfire", id = 818 },
   },
 
-  -- Talent spells: C_Spell.GetSpellInfo finds them, IsPlayerSpell doesn't.
+  -- Talent spells (active ones; dev/forever-talents.md): C_Spell.GetSpellInfo
+  -- finds them, IsPlayerSpell doesn't. Holy Binding is a passive talent: no
+  -- button, so not modelled.
   catalog = {
     { name = "Mind Flay", id = 18807 },
     { name = "Vampiric Embrace", id = 15286 },
@@ -75,7 +78,6 @@ return {
     { name = "Power Infusion", id = 10060 },
     { name = "Penance", id = 1250003 },
     { name = "Holy Nova", id = 27801 },
-    { name = "Holy Binding", id = 1250004 },
     { name = "Prayer of Mending", id = 1250005 },
   },
 

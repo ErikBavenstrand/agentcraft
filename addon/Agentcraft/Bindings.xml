@@ -1,0 +1,18 @@
+<Bindings>
+	<!-- Key Bindings › Agentcraft. The client loads this file by itself (no TOC
+	     line). Nothing is bound by default: bind a key, a pad button or a chord in
+	     the game's Key Bindings. Labels: BINDING_HEADER_AGENTCRAFT and
+	     BINDING_NAME_AGENTCRAFT_* in UI/Window.lua. -->
+	<Binding name="AGENTCRAFT_TOGGLE" category="BINDING_HEADER_AGENTCRAFT">
+		Agentcraft.OpenFromBinding()
+	</Binding>
+	<Binding name="AGENTCRAFT_CONTROLLER" category="BINDING_HEADER_AGENTCRAFT">
+		Agentcraft.OpenFromBinding("controller")
+	</Binding>
+	<Binding name="AGENTCRAFT_KEYBOARD" category="BINDING_HEADER_AGENTCRAFT">
+		Agentcraft.OpenFromBinding("keyboard")
+	</Binding>
+	<Binding name="AGENTCRAFT_MACROS" category="BINDING_HEADER_AGENTCRAFT">
+		Agentcraft.OpenFromBinding("macros")
+	</Binding>
+</Bindings>

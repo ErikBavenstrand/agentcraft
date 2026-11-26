@@ -55,7 +55,11 @@ return {
   },
 
   -- Spells the game knows but this character hasn't learned (talents):
-  -- C_Spell.GetSpellInfo finds them, IsPlayerSpell doesn't.
+  -- C_Spell.GetSpellInfo finds them, IsPlayerSpell doesn't. Rows from
+  -- dev/forever-talents.md (row r = level 10 + 5r, earlier with Talented):
+  -- Mortal Strike, Bloodthirst, Shield Slam row 6 = 40; Sweeping Strikes,
+  -- Death Wish, Concussion Blow row 4 = 30; Spearing Strike, Reckless
+  -- Swings row 3 = 25; Piercing Howl, Last Stand row 2 = 20.
   catalog = {
     { name = "Mortal Strike", id = 12294 },
     { name = "Sweeping Strikes", id = 12292 },
@@ -65,11 +69,12 @@ return {
     { name = "Shield Slam", id = 23922 },
     { name = "Last Stand", id = 12975 },
     { name = "Concussion Blow", id = 12809 },
-    -- Forever talents named by the guides (Icy Veins, Mobalytics): made-up
-    -- IDs; unverified whether each is a button or a passive.
+    -- Forever-only talents (its tooltips: Spearing Strike "a brutal
+    -- attack", Reckless Swings "your next 4 melee attacks generate 5
+    -- additional Rage"): made-up IDs. Gore Drinker (Fury row 4) is a passive
+    -- (it heals off Bloodrage and the like), so no layout names it.
     { name = "Spearing Strike", id = 1300001 },
     { name = "Reckless Swings", id = 1300002 },
-    { name = "Gore Drinker", id = 1300003 },
   },
 
   -- Other real spell names the layouts name that the fixture doesn't model

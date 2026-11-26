@@ -194,6 +194,15 @@ end
 -- so it is dropped silently and Back goes on to the page or the close.
 local RANK = { review = 1, pin = 3, engaged = 4 }
 function Esc.Pop(fromPad)
+  -- The Macros search box has the keyboard (A typed into it): B first
+  -- clears its text, then leaves it, as Esc does in the box itself.
+  if fromPad and Input.TypingBox then
+    local box = Input.TypingBox()
+    if box then
+      if box.GetText and box:GetText() ~= "" then box:SetText("") else box:ClearFocus() end
+      return true
+    end
+  end
   local best, bestRank
   for i = #Esc.stack, 1, -1 do
     local tag = Esc.stack[i].tag
@@ -243,6 +252,7 @@ end
 -- the Inspector) instead of closing the window: the prompt bar's B label.
 function Esc.CanBack()
   if Esc.HasLayers() then return true end
+  if Input.TypingBox and Input.TypingBox() then return true end
   local page = Focus.getPage and Focus.getPage()
   if page and page.CanBack then
     local ok, can = pcall(page.CanBack, page)
@@ -253,6 +263,7 @@ end
 
 -- Back from the pad: pop a layer, else close the window.
 function Esc.Back()
+  if UI.AnswerPopup and UI.AnswerPopup(false) then return true end
   if Esc.Pop(true) then return true end
   if Input.handlers.close then Input.handlers.close() end
   return false
@@ -498,6 +509,8 @@ function Focus:Set(node, source, quiet, noScroll)
   if not self.pinned and self.lastZone ~= "inspector" and not node.acNoInspect then
     After(0.12, function() if gen == self.gen and self.current == node then self:Inspect(node) end end)
   end
+  -- The prompt bar's A label follows the focused node (node.acPromptA).
+  if self.onFocus then pcall(self.onFocus, node) end
   if source ~= "mouse" and ns.Setting and ns.Setting("focusTips") and node.acTip then
     After(0.25, function() if gen == self.gen and self.current == node then pcall(node.acTip, node) end end)
   end
@@ -599,6 +612,7 @@ end
 
 -- D-pad / arrow move. Returns true (the key is always consumed once engaged).
 function Focus:Move(dir, source)
+  if source == "pad" and UI.OpenPopup and UI.OpenPopup() then return true end
   local cur = self.current
   if not cur or not Usable(cur) then self:Restore(); return true end
   local list = self:Nodes()
@@ -618,6 +632,7 @@ end
 
 -- A / Enter / Space on the focused node.
 function Focus:Activate(source)
+  if source == "pad" and UI.AnswerPopup and UI.AnswerPopup(true) then return true end
   local n = self.current
   if not n or not Usable(n) then self:Restore(); n = self.current end
   if not n then return false end
@@ -984,16 +999,23 @@ end
 function Input.EnterCombat()
   local host = Input.host
   if not host then return end
+  -- InCombatLockdown() is still false inside PLAYER_REGEN_DISABLED, so the
+  -- refresh that follows must not wire SmartNavigation again.
+  Input.combat = true
   Input.StopRepeat()
   Focus:Disengage()
   if ClearOverrideBindings then pcall(ClearOverrideBindings, host) end
   if host.SetPropagateKeyboardInput then pcall(host.SetPropagateKeyboardInput, host, true) end
   pcall(host.EnableKeyboard, host, false)
+  -- SmartNavigation refuses our (insecure) jump overrides in combat; its own
+  -- spatial moves work there, so ours come off until combat ends.
+  Input.UnwireSmartNav()
   if Input.onCombat then pcall(Input.onCombat, true) end
 end
 
 function Input.LeaveCombat()
   local host = Input.host
+  Input.combat = nil
   if not host then return end
   if Input.pendingClear and ClearOverrideBindings then ClearOverrideBindings(host) end
   Input.pendingClear = nil
@@ -1001,6 +1023,7 @@ function Input.LeaveCombat()
     host:EnableKeyboard(true)
     if host.SetPropagateKeyboardInput then host:SetPropagateKeyboardInput(true) end
     Input.Apply()
+    if type(SmartNavigation) == "table" and UI.GamepadUI() then Input.WireSmartNav() end
   end
   if Input.pendingSmartNav then
     -- Replay with the region for the current page and zone (the window's
@@ -1018,10 +1041,125 @@ function Input.SyncSmartNav(node, scrollRegion)
   local SN = SmartNavigation
   local host = Input.host
   if type(SN) ~= "table" or not host or not UI.GamepadUI() then return end
-  if InCombat() then Input.pendingSmartNav = true; Input.pendingRegion = scrollRegion return end
+  if InCombat() or Input.combat then Input.pendingSmartNav = true; Input.pendingRegion = scrollRegion return end
   Input.pendingSmartNav, Input.pendingRegion = nil, nil
   if SN.RefreshButtonGroups then pcall(SN.RefreshButtonGroups, SN, host) end
+  Input.WireSmartNav()
   if node and SN.SetTargetButtonForFrame then pcall(SN.SetTargetButtonForFrame, SN, host, node) end
   local region = scrollRegion or (node and node.acScroll and node.acScroll.scroll)
   if region and SN.SetScrollFrameForFrame then pcall(SN.SetScrollFrameForFrame, SN, host, region) end
+end
+
+-- New nodes appeared without a refresh (the Inspector filled in after its
+-- settle): SmartNavigation picks them up, and they get their moves.
+function Input.RefreshSmartNav()
+  local SN = SmartNavigation
+  local host = Input.host
+  if type(SN) ~= "table" or not host or not host:IsShown() or not UI.GamepadUI() or InCombat() or Input.combat then return end
+  if SN.RefreshButtonGroups then pcall(SN.RefreshButtonGroups, SN, host) end
+  Input.WireSmartNav()
+end
+
+-- Points the Gamepad UI cursor at node (focus moved without SmartNavigation,
+-- e.g. a right-stick scroll moved it to the first visible row).
+function Input.PointSmartNav(node)
+  local SN = SmartNavigation
+  local host = Input.host
+  if type(SN) ~= "table" or not host or not node or not UI.GamepadUI() or InCombat() or Input.combat then return end
+  if SN.SetTargetButtonForFrame then pcall(SN.SetTargetButtonForFrame, SN, host, node) end
+end
+
+-- The Gamepad UI follows the window's own focus graph -----------------------------------
+-- With the Gamepad UI on, SmartNavigation owns the D-pad and A
+-- (SmartNavigation.lua, forever branch). Its spatial pick differs from
+-- Focus.Neighbor: it knows no explicit nav*, no Choice-row steps, no page
+-- turns at the Macros book's edge, no Inspector edge. So each node gets a
+-- jump override per direction that runs Focus:Move and hands back where
+-- focus went (true = stay; Utility.lua SmartNavigation_AddJumpNavigationOverride
+-- calls a function override on every press), and UI.Node sets
+-- OnSmartNavClick, which SmartNavigation:Click runs instead of a plain click,
+-- so A does what Enter and a full-pad A do (Focus:Activate). The D-pad graph
+-- on the Deck is then the one dev/harness/focuscheck.lua walks.
+-- SmartNavigation:Navigate refuses insecure overrides while combat
+-- restrictions are on ("Interface action blocked"), so they are cleared at
+-- PLAYER_REGEN_DISABLED (its spatial pick takes over in combat) and set again
+-- when combat ends.
+Input.snWired = setmetatable({}, { __mode = "k" })
+
+local function SNApi()
+  local add, clear, dirs = SmartNavigation_AddJumpNavigationOverride, SmartNavigation_ClearJumpNavigationOverrides,
+    SMART_NAV_INPUT_DIRECTION
+  if type(add) == "function" and type(clear) == "function" and type(dirs) == "table" then return add, clear, dirs end
+end
+
+-- What one SmartNavigation press in dir from node does: the window's own
+-- move. Returns the node focus moved to, or true when it stays (an edge, a
+-- step that changed a value, a page turn that kept the slot).
+function Input.PadNav(node, dir)
+  if InCombat() or Input.combat or not (Focus.host and Focus.host:IsShown()) or not Usable(node) then return nil end
+  if Focus.current ~= node then Focus:Set(node, "pad", true, true) end
+  Focus:Move(dir, "pad")
+  local now = Focus.current
+  if now and now ~= node and Usable(now) then return now end
+  return true
+end
+
+function Input.WireSmartNav()
+  local add, _, dirs = SNApi()
+  if not add or InCombat() or Input.combat or not Focus.host then return end
+  for _, n in ipairs(Focus:Nodes(true)) do
+    if not Input.snWired[n] then
+      Input.snWired[n] = true
+      for _, d in ipairs({ "UP", "DOWN", "LEFT", "RIGHT" }) do
+        if dirs[d] then pcall(add, n, dirs[d], function() return Input.PadNav(n, d) end) end
+      end
+    end
+  end
+end
+
+function Input.UnwireSmartNav()
+  local _, clear = SNApi()
+  if clear then
+    for n in pairs(Input.snWired) do pcall(clear, n) end
+  end
+  Input.snWired = setmetatable({}, { __mode = "k" })
+end
+
+-- Our own confirm dialogs (UI.Confirm, the capture's reload prompt) on a
+-- controller without the Gamepad UI: the window's pad overrides own A and B,
+-- so A answers Yes and B answers No instead of reaching the window behind.
+-- With the Gamepad UI, GamepadPopupHandler (StaticPopupGamepad.lua) takes
+-- every pad button while a popup shows, so this never runs there.
+UI.POPUPS = { "AGENTCRAFT_CONFIRM", "AGENTCRAFT_CAPTURE_RELOAD" }
+function UI.OpenPopup()
+  if not StaticPopup_Visible then return nil end
+  for _, which in ipairs(UI.POPUPS) do
+    local ok, shown = pcall(StaticPopup_Visible, which)
+    if ok and shown then return which end
+  end
+end
+function UI.AnswerPopup(yes)
+  local which = UI.OpenPopup()
+  if not which then return false end
+  local info = StaticPopupDialogs and StaticPopupDialogs[which]
+  local data = which == "AGENTCRAFT_CONFIRM" and UI.confirmData or nil
+  if StaticPopup_Hide then pcall(StaticPopup_Hide, which) end
+  if which == "AGENTCRAFT_CONFIRM" then UI.confirmData = nil end
+  UI.RefreshPrompts()
+  if yes and info and info.OnAccept then
+    local ok, err = pcall(info.OnAccept, nil, data)
+    if not ok and ns.LogLine then ns.LogLine("Confirm: " .. tostring(err)) end
+  end
+  return true
+end
+
+-- The window's EditBox (Macros search) that has the keyboard now, or nil.
+function Input.TypingBox()
+  local kb = GetCurrentKeyBoardFocus and GetCurrentKeyBoardFocus()
+  if not (kb and type(kb) == "table" and rawget(kb, "acNode")) then return nil end
+  local o = kb
+  while o do
+    if o == Input.host then return kb end
+    o = o.GetParent and o:GetParent()
+  end
 end

@@ -119,7 +119,9 @@ L.PROFESSIONS = {
     "Jewelcrafting", "Leatherworking", "Mining", "Skinning", "Tailoring" },
   secondary = { "Cooking", "First Aid" },
   fishing = { "Bait and Tackle" },
-  utility = { "Find Minerals", "Find Herbs", "Smelting", "Disenchant", "Prospecting", "Milling", "Survey" },
+  -- Dedicated Study: the Legacy perk (Professions tree) that raises your
+  -- lowest profession by 1 (25 s cast, 23 h cooldown; Wowhead, Legacy System Overview).
+  utility = { "Find Minerals", "Find Herbs", "Smelting", "Disenchant", "Prospecting", "Milling", "Survey", "Dedicated Study" },
   -- Lines GetProfessions returns that are not primaries.
   lines = { ["Cooking"] = true, ["First Aid"] = true, ["Fishing"] = true, ["Archaeology"] = true },
   skip = { ["Fishing"] = true, ["Basic Campfire"] = true },

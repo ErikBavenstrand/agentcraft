@@ -1,7 +1,7 @@
 -- A level 60 Tauren druid with every trainer spell. Format:
 -- dev/layout-format.md ("Fixture format"). Spell IDs are Classic ranks
 -- where one exists; the Forever-only spells (Revive, Primal Bite, Shifting
--- Power, Bloom) have fixture IDs. Exact IDs don't matter to the addon, only
+-- Power) have fixture IDs. Exact IDs don't matter to the addon, only
 -- that names and IDs are consistent. Talent spells are in the catalog.
 -- Fields left out (items, bags, equipped, flyouts, professions) get
 -- defaults in harness.lua: a Hearthstone in the backpack, nothing else.
@@ -64,24 +64,26 @@ return {
     { name = "Innervate", id = 29166 },
     { name = "Hurricane", id = 16914 },
     { name = "Barkskin", id = 22812 },
+    { name = "Nature's Grasp", id = 16689 },
     { name = "Teleport: Moonglade", id = 18960 },
     { name = "War Stomp", id = 20549 },
   },
 
   -- Spells the game knows but this character hasn't learned (talents):
   -- C_Spell.GetSpellInfo finds them, IsPlayerSpell doesn't.
+  -- Rows from dev/forever-talents.md (row r = level 10 + 5r). Nature's
+  -- Grasp is not a Forever talent (a trainer spell, in spells above);
+  -- Faerie Fire (Feral) is neither a talent nor a known trainer spell.
   catalog = {
-    { name = "Insect Swarm", id = 5570 },
-    { name = "Moonkin Form", id = 24858 },
-    { name = "Nature's Grasp", id = 16689 },
-    { name = "Feral Charge", id = 16979 },
-    { name = "Primal Bite", id = 900121 },
-    { name = "Lacerate", id = 33745 },
-    { name = "Shifting Power", id = 900122 },
-    { name = "Swiftmend", id = 18562 },
-    { name = "Nature's Swiftness", id = 17116 },
-    { name = "Wild Growth", id = 48438 },
-    { name = "Bloom", id = 900123 },
+    { name = "Insect Swarm", id = 5570 },        -- Balance row 3 (25)
+    { name = "Moonkin Form", id = 24858 },       -- Balance row 6 (40)
+    { name = "Feral Charge", id = 16979 },       -- Feral row 2 (20)
+    { name = "Primal Bite", id = 900121 },       -- Feral row 6 (40)
+    { name = "Lacerate", id = 33745 },           -- Feral row 3 (25)
+    { name = "Shifting Power", id = 900122 },    -- Feral row 6 (40)
+    { name = "Swiftmend", id = 18562 },          -- Restoration row 3 (25)
+    { name = "Nature's Swiftness", id = 17116 }, -- Restoration row 4 (30)
+    { name = "Wild Growth", id = 48438 },        -- Restoration row 6 (40)
   },
 
   -- Other real spell names the layouts name that the fixture doesn't

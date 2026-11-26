@@ -25,6 +25,11 @@ globals = {
   "AgentcraftCharDB",
   "SLASH_AGENTCRAFT1",
   "SLASH_AGENTCRAFT2",
+  -- Opening the window without /ac (UI/Window.lua): the addon compartment
+  -- calls these by name (TOC); the Key Bindings UI reads the labels.
+  "Agentcraft_OnAddonCompartmentClick", "Agentcraft_OnAddonCompartmentEnter", "Agentcraft_OnAddonCompartmentLeave",
+  "BINDING_HEADER_AGENTCRAFT", "BINDING_NAME_AGENTCRAFT_TOGGLE", "BINDING_NAME_AGENTCRAFT_KEYBOARD",
+  "BINDING_NAME_AGENTCRAFT_CONTROLLER", "BINDING_NAME_AGENTCRAFT_MACROS",
   SlashCmdList = { fields = { "AGENTCRAFT" } },
   StaticPopupDialogs = { fields = { "AGENTCRAFT_CONFIRM" } },  -- UI.Confirm's dialog
 }
@@ -57,7 +62,9 @@ read_globals = {
   "ShowUIPanel", "HideUIPanel", "StaticPopup_Show", "GameTooltip_SetTitle", "GameTooltip_AddNormalLine",
   "CreateAtlasMarkup", "C_Texture", "C_ClassColor", "C_InputInterfaceStyle", "GamepadMode",
   "SetOverrideBindingClick", "ClearOverrideBindings", "SmartNavigation_MarkFrameIgnored",
-  "SmartNavigation_MarkFrameSubSection", "PanelTemplates_SetNumTabs", "PanelTemplates_SetTab",
+  "SmartNavigation_MarkFrameSubSection", "SmartNavigation_MarkFrameIgnoredContainerFrame",
+  "SmartNavigation_AddJumpNavigationOverride", "SmartNavigation_ClearJumpNavigationOverrides", "SMART_NAV_INPUT_DIRECTION",
+  "StaticPopup_Visible", "StaticPopup_Hide", "PanelTemplates_SetNumTabs", "PanelTemplates_SetTab",
   "PanelTemplates_ResizeTabsToFit", "PanelTemplates_TabResize", "MenuUtil", "ScrollUtil",
   "MinimalSliderWithSteppersMixin", "GetBindingText",
   -- v2 window (UI/Input.lua, UI/Fx.lua, UI/Controls.lua): every one guarded by an existence check

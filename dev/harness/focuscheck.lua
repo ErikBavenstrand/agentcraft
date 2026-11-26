@@ -60,6 +60,77 @@ local function Label(n)
 end
 FC.Label = Label
 
+-- The Gamepad UI model (SmartNavigation, forever branch: Utility.lua
+-- Utility.FindButtons / SmartNavigation_CanFocusFrame / IsFrameIgnored):
+-- every shown frame under root that is a Button (CheckButton, DropdownButton
+-- too) or an EditBox, or has an OnMouseDown / OnMouseUp script, and that no
+-- SmartNavigation_MarkFrameIgnored mark covers (its own, or an ancestor's
+-- that propagates). The D-pad can stop on each of them.
+local SN_TYPES = { Button = true, CheckButton = true, DropdownButton = true, EditBox = true, ItemButton = true }
+local function SNIgnored(f)
+  if rawget(f, "_snIgnoredSelf") then return true end
+  local o = f
+  while o do
+    if rawget(o, "_snIgnored") then return true end
+    o = o.GetParent and o:GetParent()
+  end
+  return false
+end
+FC.SNIgnored = SNIgnored
+
+function FC.SmartNavTargets(root)
+  local out = {}
+  local function walk(f, isRoot)
+    if f.IsShown and not f:IsShown() then return end
+    if not isRoot and not SNIgnored(f) and not rawget(f, "_snContainer") then
+      local t = rawget(f, "_type")
+      local scripts = rawget(f, "_scripts") or {}
+      local w, h = f:GetWidth(), f:GetHeight()
+      if (SN_TYPES[t] or scripts.OnMouseDown or scripts.OnMouseUp) and (w or 0) > 0 and (h or 0) > 0 then
+        out[#out + 1] = f
+      end
+    end
+    if f.GetChildren then for _, c in ipairs({ f:GetChildren() }) do walk(c) end end
+  end
+  walk(root, true)
+  return out
+end
+
+-- Gamepad UI coverage of what is shown now:
+--   r.phantoms  frames the Gamepad UI can stop on that are not focus nodes
+--               (no Inspector, A does a bare click or nothing, and the
+--               window's own moves never lead back): mark them
+--               UI.MarkIgnored, make them nodes, or set acDecorative
+--   r.hidden    usable focus nodes the Gamepad UI can't reach (an ignore
+--               mark covers them)
+--   r.inert     usable nodes A does nothing on: no acActivate, no OnClick,
+--               not an EditBox. Fine: read-only acReadable nodes that are
+--               disabled, and nodes whose acPromptA is (or returns) false:
+--               they say A has no job there, and the A prompt hides
+function FC.PadCoverage(env)
+  local Focus = env.ns.Focus
+  local root = Focus:Root()
+  local r = { phantoms = {}, hidden = {}, inert = {} }
+  if not root then return r end
+  for _, f in ipairs(FC.SmartNavTargets(root)) do
+    if not rawget(f, "acNode") and not rawget(f, "acDecorative") and not rawget(f, "acSkip") then
+      r.phantoms[#r.phantoms + 1] = f
+    end
+  end
+  for _, n in ipairs(Focus:Nodes()) do
+    if SNIgnored(n) then r.hidden[#r.hidden + 1] = n end
+    local scripts = rawget(n, "_scripts") or {}
+    local readOnly = n.IsEnabled and not n:IsEnabled() and rawget(n, "acReadable")
+    local pa = rawget(n, "acPromptA")
+    if type(pa) == "function" then pa = pa(n) end
+    if pa == false then readOnly = true end
+    if not readOnly and not rawget(n, "acActivate") and not scripts.OnClick and rawget(n, "_type") ~= "EditBox" then
+      r.inert[#r.inert + 1] = n
+    end
+  end
+  return r
+end
+
 function FC.Walk(env, opts)
   opts = opts or {}
   local ns = env.ns

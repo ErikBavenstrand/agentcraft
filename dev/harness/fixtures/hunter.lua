@@ -24,14 +24,14 @@ return {
     { name = "Mongoose Bite", id = 14271, icon = 132215 },
     { name = "Wing Clip", id = 14268, icon = 132309 },
     { name = "Disengage", id = 14273, icon = 132294 },
-    { name = "Counterattack", id = 20910, icon = 132336 },
+
     { name = "Feign Death", id = 5384, icon = 132293 },
     { name = "Freezing Trap", id = 14311, icon = 135834 },
     { name = "Frost Trap", id = 13809, icon = 135840 },
     { name = "Explosive Trap", id = 14317, icon = 135826 },
     { name = "Immolation Trap", id = 14305, icon = 135813 },
     { name = "Rapid Fire", id = 3045, icon = 132208 },
-    { name = "Scatter Shot", id = 19503, icon = 132153 },
+
     { name = "Aspect of the Hawk", id = 25296, icon = 136076, flyoutOnly = true },
     { name = "Aspect of the Monkey", id = 13163, icon = 132159, flyoutOnly = true },
     { name = "Aspect of the Cheetah", id = 5118, icon = 132242, flyoutOnly = true },
@@ -97,18 +97,27 @@ return {
   -- (rules only, no ID: R.FixtureSpells; adding them as spells would change
   -- what the tests see).
   otherSpells = {
-    "Summon Hawk", "Sniper Shot", "Strider Kick", "Deterrence", "Scorpid Sting", "Distracting Shot",
+    "Scorpid Sting", "Distracting Shot",
     "Aspect of the Beast", "Aspect of the Wild",
     "Find Herbs", "Skinning", "Alchemy", "Blacksmithing",
     "Leatherworking", "Tailoring", "Enchanting", "Disenchant",
   },
 
-  -- Spells the game knows but the player hasn't learned (C_Spell.GetSpellInfo works).
+  -- Spells the game knows but the player hasn't learned (C_Spell.GetSpellInfo
+  -- works): every active Forever talent the layouts name, with its row from
+  -- dev/forever-talents.md (row r = level 10 + 5r, earlier with Talented).
+  -- Lacerating Strikes (Survival row 6) is passive: no button. Wyvern Sting
+  -- is not a Forever talent.
   catalog = {
-    { name = "Bestial Wrath", id = 19574, icon = 132127 },
-    { name = "Intimidation", id = 19577, icon = 132111 },
-    { name = "Trueshot Aura", id = 20906, icon = 132329 },
-    { name = "Wyvern Sting", id = 24133, icon = 135125 },
+    { name = "Summon Hawk", id = 1300301 },                -- BM row 3 = 25 (made-up ID)
+    { name = "Intimidation", id = 19577, icon = 132111 },  -- BM row 4 = 30
+    { name = "Bestial Wrath", id = 19574, icon = 132127 }, -- BM row 6 = 40
+    { name = "Trueshot Aura", id = 20906, icon = 132329 }, -- MM row 3 = 25
+    { name = "Scatter Shot", id = 19503, icon = 132153 },  -- MM row 4 = 30
+    { name = "Sniper Shot", id = 1300302 },                -- MM row 6 = 40 (made-up ID)
+    { name = "Deterrence", id = 19263 },                   -- Survival row 2 = 20
+    { name = "Counterattack", id = 20910, icon = 132336 }, -- Survival row 3 = 25
+    { name = "Strider Kick", id = 1300303 },               -- Survival row 4 = 30 (made-up ID)
   },
 
   -- icon = the item icon file ID (icon names from the wowhead classic tooltips,

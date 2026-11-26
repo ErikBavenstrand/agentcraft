@@ -57,7 +57,9 @@ end
 --   { profession = 3 }               your 3rd profession spell in the stable order
 --                                    (ActionBars.ProfessionSpells); waits when you have fewer
 local RACIALS = { "War Stomp", "Berserking", "Blood Fury", "Will of the Forsaken", "Stoneform",
-  "Shadowmeld", "Escape Artist", "Perception" }
+  "Shadowmeld", "Escape Artist", "Perception",
+  -- Skyborne (Wowhead, Skyborne Race Overview): no combat racial; Walk on Air (glide, 1.5 min).
+  "Walk on Air" }
 
 local PADDLE_KEY = { L4 = "F13", L5 = "F14", R4 = "F15", R5 = "F16" }
 local PADDLE_ORDER = { "L4", "L5", "R4", "R5", "LT+L4", "LT+L5", "LT+R4", "LT+R5" }
@@ -347,6 +349,100 @@ local function Storage(page, slotID)
   return ok and index or nil
 end
 
+-- Whether an action slot already holds the resolved item.
+local function Same(slot, item)
+  if not item or item.missing then return false end
+  local t, id = GetActionInfo(slot)
+  return (item.kind == "spell" and t == "spell" and id == item.id)
+    or (item.kind == "item" and t == "item" and id == item.id)
+    or (item.kind == "flyout" and t == "flyout" and id == item.id)
+    or (item.kind == "macro" and t == "macro" and GetActionText(slot) == item.name)
+end
+
+-- Stance bar (Blizzard_GamepadActionBars/StanceBar.lua) ---------------------------
+-- While a bonus bar is active (warrior stance, druid form, rogue stealth,
+-- shadowform), the Gamepad UI swaps one bar for 8 slots of its own per stance,
+-- starting at C_GamepadUI.GetFirstGamepadActionBarStorageSlotIndexForActiveStance().
+-- The CVar GamepadStanceBarOverride picks the bar: 1 None, 2 Page 1 Left,
+-- 3 Page 1 Right, 4 Page 1 Bottom, 5 Page 2 Top ... 12 Page 3 Bottom.
+-- The 8 slots follow that bar's button order (D-pad L U R D, face X Y B A).
+-- Agentcraft mirrors the bar into every stance's slots, so a button does the
+-- same thing in every stance (owner, 2026-11-24). The game only tells the
+-- active stance's first slot: Agentcraft records it per class and offset and
+-- infers the others at 8 slots per offset, until it sees them.
+local STANCE_SLOTS = 8
+
+-- page, bar (0 Top, 1 Left, 2 Right, 3 Bottom) the stance bar replaces, or nil.
+function M.StanceTarget()
+  if not (C_CVar and C_CVar.GetCVar) then return nil end
+  local ok, v = pcall(C_CVar.GetCVar, "GamepadStanceBarOverride")
+  v = ok and tonumber(v)
+  if not v or v <= 1 or v > 12 then return nil end
+  local overall = v - 1
+  return math.floor(overall / 4) + 1, overall % 4
+end
+
+local function ActiveStanceFirst()
+  local G = C_GamepadUI
+  if not (G and G.GetFirstGamepadActionBarStorageSlotIndexForActiveStance) then return nil end
+  local ok, first = pcall(G.GetFirstGamepadActionBarStorageSlotIndexForActiveStance)
+  if not ok or type(first) ~= "number" or (issecretvalue and issecretvalue(first)) then return nil end
+  return first
+end
+
+local function ValidStanceSlot(s, useAPI)
+  local G = C_GamepadUI
+  if useAPI then
+    if not (G and G.IsValidGamepadActionStorageSlotIndex) then return false end
+    local ok, valid = pcall(G.IsValidGamepadActionStorageSlotIndex, s)
+    if not (ok and valid) then return false end
+  end
+  -- Never a slot of the three standard pages.
+  local first = Storage(1, 1)
+  local lastStd = Storage(3, 32)
+  return not (first and lastStd and s >= first and s <= lastStd)
+end
+
+-- Records the active stance's first slot (account-wide, by class and offset).
+function M.ObserveStance()
+  local offset = ns.Layout and ns.Layout.BonusOffset()
+  if not offset or offset < 1 or not M.db then return nil end
+  local first = ActiveStanceFirst()
+  if not first then return nil end
+  local _, class = UnitClass("player")
+  M.db.stanceFirst = M.db.stanceFirst or {}
+  M.db.stanceFirst[class] = M.db.stanceFirst[class] or {}
+  local was = M.db.stanceFirst[class][offset]
+  M.db.stanceFirst[class][offset] = first
+  return offset, first, was ~= first
+end
+
+-- { { offset =, first =, seen = bool }, ... } for the class's stances whose
+-- slots are known or can be inferred.
+function M.StanceList()
+  local _, class = UnitClass("player")
+  local seen = M.db and M.db.stanceFirst and M.db.stanceFirst[class] or {}
+  local offsets = {}
+  for _, off in pairs(ns.Layout and ns.Layout.STANCE_OFFSETS[class] or {}) do offsets[off] = true end
+  for off in pairs(seen) do offsets[off] = true end
+  local anchorOff, anchorFirst
+  for off, first in pairs(seen) do
+    if not anchorOff or off < anchorOff then anchorOff, anchorFirst = off, first end
+  end
+  -- The API check only counts when it accepts the slots the game showed.
+  local apiTrusted = anchorFirst ~= nil and ValidStanceSlot(anchorFirst, true)
+  local list = {}
+  for off in pairs(offsets) do
+    local first, isSeen = seen[off], seen[off] ~= nil
+    if not first and anchorOff then first = anchorFirst + (off - anchorOff) * STANCE_SLOTS end
+    local ok = first ~= nil
+    for k = 0, STANCE_SLOTS - 1 do ok = ok and ValidStanceSlot(first + k, apiTrusted) end
+    if ok then list[#list + 1] = { offset = off, first = first, seen = isSeen } end
+  end
+  table.sort(list, function(a, b) return a.offset < b.offset end)
+  return list
+end
+
 -- Spells never offered by the catch-all: always-on or handled by the UI.
 local OVERFLOW_SKIP = { ["Attack"] = true, ["Auto Attack"] = true, ["Auto Shot"] = true, ["Shoot"] = true, ["Throw"] = true, ["Cultivation"] = true }
 
@@ -465,6 +561,26 @@ function M.Plan()
       if slot and HasAction(slot) then plan.changes = plan.changes + 1 end
     end
   end
+  -- Stance bars mirror the bar they replace: same item, same button.
+  local tp, tb = M.StanceTarget()
+  plan.stances = { page = tp, bar = tb }
+  if tp and plan[tp] and Util() then
+    M.ObserveStance()
+    for _, st in ipairs(M.StanceList()) do
+      local row = { offset = st.offset, first = st.first, seen = st.seen }
+      for k = 1, STANCE_SLOTS do
+        local want = plan[tp][tb * 8 + k]
+        local item = want and not want.item.missing and want.item or nil
+        local s = st.first + k - 1
+        local state
+        if item then state = Same(s, item) and "same" or "new"
+        else state = HasAction(s) and "clear" or "empty" end
+        if state == "new" or state == "clear" then plan.changes = plan.changes + 1 end
+        row[k] = { slot = s, item = item, state = state }
+      end
+      plan.stances[#plan.stances + 1] = row
+    end
+  end
   plan.unplaced = #overflow - (nextOverflow - 1)
   plan.paddles = {}
   local paddleUsed = {}
@@ -524,16 +640,6 @@ local function Place(slot, item)
   ClearCursor()
 end
 
--- Whether an action slot already holds the resolved item.
-local function Same(slot, item)
-  if not item or item.missing then return false end
-  local t, id = GetActionInfo(slot)
-  return (item.kind == "spell" and t == "spell" and id == item.id)
-    or (item.kind == "item" and t == "item" and id == item.id)
-    or (item.kind == "flyout" and t == "flyout" and id == item.id)
-    or (item.kind == "macro" and t == "macro" and GetActionText(slot) == item.name)
-end
-
 -- Shared with the keyboard bars (ActionBars), which use the same layout entries.
 M.Place, M.Same, M.Icon, M.Known = Place, Same, Icon, Known
 
@@ -544,6 +650,9 @@ local function ManagedSlots(plan)
       local s = Storage(page, slotID)
       if s then slots[#slots + 1] = s end
     end
+  end
+  for _, row in ipairs(plan.stances or {}) do
+    for k = 1, STANCE_SLOTS do slots[#slots + 1] = row[k].slot end
   end
   return slots
 end
@@ -612,6 +721,16 @@ function M.Apply()
       end
     end
   end
+  local stances = 0
+  for _, row in ipairs(bars and plan.stances or {}) do
+    stances = stances + 1
+    for k = 1, STANCE_SLOTS do
+      local c = row[k]
+      if c.state == "new" then Place(c.slot, c.item); placed = placed + 1
+      elseif c.state == "clear" then PickupAction(c.slot); ClearCursor() end
+    end
+  end
+  M.charDB.stancesApplied = stances > 0 or nil
 
   for _, p in pairs(plan.paddles) do
     SetBinding(p.binding)
@@ -628,6 +747,35 @@ function M.Apply()
   ns.Print(string.format("controller layout applied (%d changes). /ac controller undo to go back.", placed))
   if plan.missing > 0 then ns.Print(plan.missing .. " planned buttons wait for spells or items you don't have yet, or macros you haven't installed.") end
 end
+
+-- A stance first seen after Apply (a druid applies in caster form, or an
+-- inferred slot was wrong): fill its stance bar once, out of combat.
+local pendingStance
+local function SyncNewStance()
+  if InCombatLockdown() then pendingStance = true; return end
+  pendingStance = nil
+  if not (M.charDB and M.charDB.backup) then return end
+  local offset, _, changed = M.ObserveStance()
+  if not (offset and changed) then return end
+  local plan = M.Plan()
+  for _, row in ipairs(plan and plan.stances or {}) do
+    if row.offset == offset then
+      local n = 0
+      for k = 1, STANCE_SLOTS do
+        local c = row[k]
+        if c.state == "new" then Place(c.slot, c.item); n = n + 1
+        elseif c.state == "clear" then PickupAction(c.slot); ClearCursor(); n = n + 1 end
+      end
+      if n > 0 then ns.Print("filled the controller stance bar for this stance (" .. n .. " buttons).") end
+    end
+  end
+end
+
+M.events = {
+  UPDATE_BONUS_ACTIONBAR = function() SyncNewStance() end,
+  PLAYER_ENTERING_WORLD = function() SyncNewStance() end,
+  PLAYER_REGEN_ENABLED = function() if pendingStance then SyncNewStance() end end,
+}
 
 -- Puts a saved action back on the cursor; false if it can't be restored.
 local function PickupSaved(t, id, text)
@@ -1537,6 +1685,9 @@ local function BuildHUD(page, stage)
   hint:SetScript("OnClick", function()
     if ns.UI and ns.UI.CycleView then ns.UI.CycleView(1) end
   end)
+  -- Mouse only (X and the footer prompt are the pad and keyboard route), so
+  -- not a Gamepad UI stop.
+  UI.MarkIgnored(hint)
   page.setHintButton = hint
   page.setHint = UI.Glyph(hint, "PAD3", 22, "prompt")
   page.setHint:SetPoint("LEFT", hint, "LEFT", 2, 0)

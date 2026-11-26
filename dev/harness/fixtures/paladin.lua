@@ -1,8 +1,8 @@
 -- A level 60 Human paladin with every WoW Forever trainer spell the
 -- layouts name. Format: dev/layout-format.md ("Fixture format"). Spell IDs
--- are Classic ranks where one exists; Forever-only spells (Seal of Fury,
--- Holy Strike's baseline rank) use made-up IDs. Exact IDs don't matter to
--- the addon, only that names and IDs are consistent.
+-- are Classic ranks where one exists; Forever-only spells use Wowhead's
+-- Forever IDs (Holy Strike's baseline rank keeps a Classic one). Exact IDs
+-- don't matter to the addon, only that names and IDs are consistent.
 -- Fields left out (items, bags, equipped, flyouts, professions) get
 -- defaults in harness.lua: a Hearthstone in the backpack, nothing else.
 return {
@@ -31,8 +31,8 @@ return {
     { name = "Hammer of Justice", id = 10308 },       -- 8
     { name = "Purify", id = 1152 },                   -- 8
     { name = "Lay on Hands", id = 10310 },            -- 10 (20 min cooldown on Forever)
-    { name = "Seal of Fury", id = 990010 },           -- 10 (Forever only)
-    { name = "Righteous Fury", id = 25780 },          -- 10
+    { name = "Seal of Fury", id = 1311649 },          -- 10 (Forever only)
+    { name = "Righteous Fury", id = 25780 },          -- 16
     { name = "Blessing of Protection", id = 10278 },  -- 10
     { name = "Redemption", id = 20773 },              -- 12
     { name = "Blessing of Wisdom", id = 25290 },      -- 14
@@ -42,7 +42,7 @@ return {
     { name = "Exorcism", id = 10314 },                -- 20
     { name = "Flash of Light", id = 19943 },          -- 20
     { name = "Blessing of Kings", id = 20217 },       -- 20
-    { name = "Seal of Command", id = 20920 },         -- 20 (baseline on Forever)
+    { name = "Voice of Truth", id = 1310897 },        -- 20 (Forever trainer spell, not a talent): immune to silence and interrupts for 6 s
     { name = "Concentration Aura", id = 19746 },      -- 22
     { name = "Seal of Justice", id = 20164 },         -- 22
     { name = "Turn Undead", id = 10326 },             -- 24
@@ -63,10 +63,20 @@ return {
   },
 
   -- Talent spells: C_Spell.GetSpellInfo finds them, IsPlayerSpell doesn't.
+  -- Rows from dev/forever-talents.md (row r = level 10 + 5r, earlier with
+  -- Talented). Shieldsworn (Prot row 6) and Unsealed Wrath (Ret row 6) are
+  -- passives: no button, so not here.
   catalog = {
-    { name = "Holy Shock", id = 20930 },   -- Holy, 21 points (10 s cooldown on Forever)
-    { name = "Holy Shield", id = 20928 },  -- Protection
-    { name = "Repentance", id = 20066 },   -- Retribution
+    { name = "Holy Shock", id = 20930 },      -- Holy row 4 = 30 (10 s cooldown on Forever)
+    { name = "Holy Shield", id = 20928 },     -- Protection row 4 = 30
+    { name = "Repentance", id = 20066 },      -- Retribution row 4 = 30
+    { name = "Seal of Command", id = 20375 }, -- Retribution row 2 = 20 (further ranks trained)
+    { name = "Divine Favor", id = 20216 },    -- Holy row 2 = 20: the next Holy Shock crits (2 min)
+    -- Forever-only talents (Wowhead Forever IDs and names):
+    { name = "Light's Vigil", id = 1311595 },     -- Holy row 6 = 40: set on a group member, Holy Shock heals their group
+    { name = "Oath of Light", id = 1328548 },     -- Holy row 3 = 25: protect target ally for 1 hour, one Oath at a time (Wowhead talent-calc ID)
+    { name = "Swift Judgement", id = 1310994 },   -- Protection row 3 = 25: resets Judgement (1 min; backup taunt)
+    { name = "Templar's Bulwark", id = 1311015 }, -- Protection row 2 = 20: absorbs 100% of your health for 8 s (5 min)
   },
 
   -- Profession spells the shared controller Utility page names (rules only).

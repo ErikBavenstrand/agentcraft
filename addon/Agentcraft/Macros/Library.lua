@@ -10,6 +10,8 @@
 --     race = "Tauren",            -- race file name (Scourge = Undead, NightElf); omit for every race
 --     profession = "Fishing",     -- profession it needs; omit if none
 --     tags = { "solo", "group" }, -- free topic tags shown as chips
+--     specs = { "prot" },         -- spec keys (Layouts/<Class>.lua) it is recommended for: a gold chip each,
+--                                 -- and the Macros page lists your spec's first
 --     order = 10,                 -- position inside its category (lower first)
 --     icon = "Serpent Sting",     -- spell or item name for the picture; or iconFile = "INV_..."
 --     requires = { "Serpent Sting" }, -- spells that must be in your spellbook
@@ -76,6 +78,7 @@ L.tagTypes = {
   class = { order = 1 },
   race = { order = 2, color = { 0.85, 0.65, 0.45 } },
   profession = { order = 3, color = { 0.45, 0.85, 0.45 } },
+  spec = { order = 3.5, color = { 1, 0.82, 0 } },
   topic = { order = 4, color = { 0.8, 0.8, 0.8 } },
   status = { order = 5, color = { 1, 0.55, 0.2 } },
 }
@@ -108,6 +111,12 @@ function L.Tags(m)
   end
   if m.race then Add("race", m.race, RACE_LABELS[m.race] or m.race) end
   if m.profession then Add("profession", m.profession, m.profession) end
+  -- Recommended for a spec (owner, 2026-11-26): one chip per spec it suits.
+  for _, key in ipairs(m.specs or {}) do
+    local Lay = ns.Layout
+    local spec = Lay and m.class and Lay.SpecByKey and Lay.SpecByKey(m.class, key)
+    Add("spec", key, spec and spec.name or Title(key))
+  end
   for _, c in ipairs(L.categories) do
     if c.key == m.category then Add("topic", c.key, c.title) end
   end
@@ -161,16 +170,33 @@ function L.Fits(m)
   return true
 end
 
--- Macros sorted by category, then order, then name. Only the ones that
--- fit this character unless showAll.
+-- Whether m is recommended for the character's active spec (m.specs).
+local function MySpec()
+  if not ns.Layout or not ns.Layout.ActiveSpec then return nil end
+  local _, class = UnitClass("player")
+  return ns.Layout.ActiveSpec(class), class
+end
+function L.ForMySpec(m, spec, class)
+  if not m.specs then return false end
+  if not spec then spec, class = MySpec() end
+  if m.class and m.class ~= class then return false end
+  for _, k in ipairs(m.specs) do if spec and spec.key == k then return true end end
+  return false
+end
+
+-- Macros sorted by category, then your spec's recommended ones, then order,
+-- then name. Only the ones that fit this character unless showAll.
 function L.Entries(showAll)
-  local list = {}
+  local list, mine = {}, {}
+  local spec, class = MySpec()
+  for _, m in ipairs(L.macros) do mine[m] = L.ForMySpec(m, spec, class) end
   for _, m in ipairs(L.macros) do
     if showAll or L.Fits(m) then list[#list + 1] = m end
   end
   table.sort(list, function(a, b)
     local ca, cb = CATEGORY_RANK[a.category], CATEGORY_RANK[b.category]
     if ca ~= cb then return ca < cb end
+    if mine[a] ~= mine[b] then return mine[a] end
     if (a.order or 50) ~= (b.order or 50) then return (a.order or 50) < (b.order or 50) end
     return a.name < b.name
   end)

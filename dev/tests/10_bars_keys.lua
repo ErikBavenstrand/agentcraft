@@ -142,7 +142,7 @@ test("bars: the Ctrl layer fills Action Bar 4; side bars start at Action Bar 5; 
   eq(p.rows[5].label, "Action Bar 5")
   eq(p[4][1].slot, 25, "Ctrl+Q is slot 25")
   eq(p[4][1].name, "Viper Sting", "Ctrl+Q")
-  eq(p[4][5].name, "Volley", "Ctrl+F")
+  eq(p[4][5].name, "Scare Beast", "Ctrl+F")
   eq(p[4][11].name, "Feed Pet", "Ctrl+3")
   local ctrl = {}
   for i = 1, 12 do if p[4][i].name then ctrl[p[4][i].name] = true end end

@@ -27,6 +27,9 @@
 --         Slot order A, Y, X, B, Down, Up, Left, Right keeps the owner's
 --         tested hunter page: Engineering (2) on Y, Cooking (3) on X, First
 --         Aid (4) on B and Bait and Tackle (5) on Down, as before.
+--
+-- Page 3 (Extras):
+--   LT+RT Y  the "Agentcraft" macro (/ac): opens this window from the pad.
 local _, ns = ...
 
 ns.Layout.RegisterShared({
@@ -54,6 +57,12 @@ ns.Layout.RegisterShared({
         ["LT+RT Up"] = { profession = 6 },
         ["LT+RT Left"] = { profession = 7 },
         ["LT+RT Right"] = { profession = 8 },
+      },
+      [3] = {
+        -- Next to the Steam Deck helpers (Reload, Follow, Focus, Assist on
+        -- the D-pad, Skull on LT+RT A): opens this window with one button
+        -- (owner request, 2026-11-24). Waits until installed.
+        ["LT+RT Y"] = { macro = "Agentcraft" },
       },
     },
   },

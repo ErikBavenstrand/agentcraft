@@ -137,6 +137,7 @@ UI.ART = {
   bookRight = { "spellbook-Page-Right-C60" },
   socket = { "character-emptysocket" },
   warning = { "services-icon-warning" },
+  star = { "auctionhouse-icon-favorite", "PetJournal-FavoritesIcon" },
   meterGreen = { "common-stat-bar-green" },
   meterWhite = { "common-stat-bar-white" },
   meterRed = { "common-stat-bar-red" },
@@ -174,6 +175,12 @@ UI.ART = {
 function UI.MarkIgnored(frame)
   if SmartNavigation_MarkFrameIgnored then pcall(SmartNavigation_MarkFrameIgnored, frame) end
 end
+-- The frame itself is not a Gamepad UI stop (it takes a mouse script, such as
+-- the stage's right-click Back), but the nodes inside it still are
+-- (Utility.lua SmartNavigation_MarkFrameIgnoredContainerFrame).
+function UI.MarkContainer(frame)
+  if SmartNavigation_MarkFrameIgnoredContainerFrame then pcall(SmartNavigation_MarkFrameIgnoredContainerFrame, frame) end
+end
 
 -- Focus nodes (dev/ui-spec-v2.md §4.1): any interactive frame the shared
 -- focus (mouse, keys, controller) can land on. opts (all optional):
@@ -198,7 +205,24 @@ function UI.Node(w, opts)
       if F.Set and not F.setting then F:Set(self, "click", true, true) end
       if F.Engage and not (InCombatLockdown and InCombatLockdown()) then F:Engage() end
     end)
-    w.OnSmartNavSelect = function(self) if ns.Focus and ns.Focus.Set then ns.Focus:Set(self, "pad") end end
+    -- Gamepad UI: SmartNavigation landed on the node (our jump override
+    -- already focused it, then the call is a no-op), and A on it runs the
+    -- window's Activate, not a plain click (UI/Input.lua, "The Gamepad UI
+    -- follows the window's own focus graph").
+    w.OnSmartNavSelect = function(self)
+      local F = ns.Focus
+      if F and F.Set and F.current ~= self then F:Set(self, "pad") end
+    end
+    w.OnSmartNavClick = function(self)
+      local F = ns.Focus
+      if F and F.Usable and F.Usable(self) then
+        if F.current ~= self then F:Set(self, "pad", true) end
+        F:Activate("pad")
+      elseif self.Click then
+        self:Click("LeftButton")
+      end
+      return true
+    end
   end
   w.acFocusStyle = opts.style or w.acFocusStyle or "button"
   if opts.id then w.acId = opts.id end
@@ -767,8 +791,10 @@ function UI.Check(parent, label, desc, onClick)
   end)
   row:SetScript("OnEnter", function() if box.LockHighlight then box:LockHighlight() end end)
   row:SetScript("OnLeave", function() if box.UnlockHighlight then box:UnlockHighlight() end end)
-  -- The row is the focus node (A toggles it); the box itself is not.
+  -- The row is the focus node (A toggles it); the box itself is not, nor a
+  -- Gamepad UI stop.
   UI.Node(row, { style = "row" })
+  UI.MarkIgnored(box)
   if row.acInspect == nil then
     row.acInspect = function(self, pane)
       pane:Header(nil, label or "", self:GetChecked() and "On" or "Off")
@@ -930,6 +956,10 @@ function UI.Scroll(parent)
   -- nothing scrolls (Options Inspector in the capture): hide it then, as
   -- Blizzard's lists do (scrollBarHideIfUnscrollable).
   local bar = modern and type(scroll.ScrollBar) == "table" and scroll.ScrollBar
+  -- The bar's arrows and thumb are mouse-only: the right stick scrolls
+  -- (SetScrollFrameForFrame) and focus scrolls into view, so the Gamepad UI
+  -- never stops on them.
+  if type(scroll.ScrollBar) == "table" then UI.MarkIgnored(scroll.ScrollBar) end
   if bar and bar.SetHideIfUnscrollable then
     pcall(bar.SetHideIfUnscrollable, bar, true)
     if bar.Update then pcall(bar.Update, bar) end
@@ -970,6 +1000,11 @@ function UI.LogBox(parent, font)
   end
   edit:SetAutoFocus(false)
   edit:SetFontObject(font or "ChatFontNormal")
+  -- Read-only text, scrolled with the right stick (the page's ScrollRegion):
+  -- the Gamepad UI never stops on the box or its scroll bar, and A never
+  -- hands it the keyboard.
+  UI.MarkIgnored(edit)
+  if box.ScrollBar then UI.MarkIgnored(box.ScrollBar) end
   edit:HookScript("OnEscapePressed", edit.ClearFocus)
   -- Read-only: undo typing, but allow selecting and copying.
   edit:HookScript("OnTextChanged", function(self, userInput)
@@ -1000,6 +1035,11 @@ function UI.Confirm(text, onAccept)
       button1 = YES or "Yes",
       button2 = NO or "No",
       OnAccept = function(_, data) if type(data) == "function" then data() end end,
+      -- The prompt bar's Yes / No (controller without the Gamepad UI) go back to A / B.
+      OnHide = function()
+        UI.confirmData = nil
+        if UI.RefreshPrompts and C_Timer then C_Timer.After(0, UI.RefreshPrompts) end
+      end,
       timeout = 0,
       whileDead = 1,
       hideOnEscape = 1,
@@ -1007,7 +1047,12 @@ function UI.Confirm(text, onAccept)
       preferredIndex = 3,
     }
   end
-  return StaticPopup_Show("AGENTCRAFT_CONFIRM", text, nil, onAccept)
+  -- Kept for a controller without the Gamepad UI: pad A answers Yes through
+  -- UI.AnswerPopup (UI/Input.lua), which runs it the way OnAccept does.
+  UI.confirmData = onAccept
+  local dialog = StaticPopup_Show("AGENTCRAFT_CONFIRM", text, nil, onAccept)
+  if UI.RefreshPrompts then UI.RefreshPrompts() end
+  return dialog
 end
 
 -- Empty and error states -----------------------------------------------------------

@@ -35,6 +35,7 @@ local PAGE_PREV = "Interface\\Buttons\\UI-SpellbookIcon-PrevPage"
 local PAGE_NEXT = "Interface\\Buttons\\UI-SpellbookIcon-NextPage"
 local CHECK_OK = "|TInterface\\RaidFrame\\ReadyCheck-Ready:14|t"
 local CHECK_NO = "|TInterface\\RaidFrame\\ReadyCheck-NotReady:14|t"
+local CHECK_OFF = "|TInterface\\Buttons\\UI-CheckBox-Up:14|t" -- an empty box: a tag that is off (More... list)
 
 local function Trim(s) return ((s or ""):gsub("^%s+", ""):gsub("%s+$", "")) end
 
@@ -434,6 +435,7 @@ local function FillInspector(page, m, pane)
       pane:Row("No room", (m.perCharacter and "Character" or "General") .. " macros are full", UI.C.ORANGE)
     end
   end
+  if L.ForMySpec(m) then pane:Row("Recommended", "for your spec", UI.C.NORMAL) end
   if m.untested then pane:Row("Untested", "not yet confirmed in game", UI.C.ORANGE) end
   if m.desc and m.desc ~= "" then pane:Text(m.desc) end
   if m.generated then
@@ -477,14 +479,23 @@ local function FillInspector(page, m, pane)
     pane:Text("Rename or delete your own '" .. m.name .. "' in /macro to install this one.", UI.C.DISABLED)
   end
   local label = st == "update" and "Update" or st == "installed" and "Installed" or "Install"
-  pane:Buttons({
+  local buttons = {
     { label = label, enabled = CanInstall(st) and not blocked and not InCombatLockdown(),
       fn = function() InstallOne(page, m) end },
-    { label = "Pick Up", enabled = IsInstalled(st), fn = function() L.PickUp(m) end },
-    { label = "Remove", enabled = IsInstalled(st),
-      confirm = "Remove '" .. m.name .. "' and unbind its keys?",
-      fn = function() UI.RunAction(function() L.Remove({ m }) end) end },
-  })
+  }
+  -- Pick Up puts the macro on the cursor, to drop on a button with the
+  -- mouse. A controller doesn't need it: the plan places every macro that
+  -- has a home (Review & Apply), so say that in controller prompt mode.
+  buttons[#buttons + 1] = { label = "Pick Up", enabled = IsInstalled(st), fn = function() L.PickUp(m) end }
+  if UI.PadMode() and IsInstalled(st) then
+    pane:Text(#homes > 0 and "On a controller you don't need Pick Up: Review & Apply on the Keyboard or Controller page puts it on its key."
+      or "Pick Up puts it on the cursor; drop it on a button with the Deck's trackpad or touchscreen. It has no home in your layout.",
+      UI.C.DISABLED)
+  end
+  buttons[#buttons + 1] = { label = "Remove", enabled = IsInstalled(st),
+    confirm = "Remove '" .. m.name .. "' and unbind its keys?",
+    fn = function() UI.RunAction(function() L.Remove({ m }) end) end }
+  pane:Buttons(buttons)
 end
 
 -- Book ----------------------------------------------------------------------------------
@@ -555,6 +566,13 @@ local function MakeCard(page, parent, i)
   c.badgeIcon = c:CreateTexture(nil, "OVERLAY")
   c.badgeIcon:SetSize(16, 16)
   c.badgeIcon:SetPoint("RIGHT", c.badge, "LEFT", -3, 0)
+  -- Recommended for your spec (owner, 2026-11-26): a gold star on the icon
+  -- corner, made once and toggled.
+  c.star = c:CreateTexture(nil, "OVERLAY", nil, 4)
+  c.star:SetSize(18, 18)
+  c.star:SetPoint("TOPLEFT", c.iconFrame, "TOPLEFT", -6, 6)
+  if not UI.SetAtlas(c.star, UI.ART.star) then c.star:SetTexture("Interface\\TargetingFrame\\UI-RaidTargetingIcon_1") end
+  c.star:Hide()
   c.warn = c:CreateTexture(nil, "OVERLAY")
   c.warn:SetSize(16, 16)
   if not UI.SetAtlas(c.warn, UI.ART.warning) then c.warn:SetTexture("Interface\\DialogFrame\\UI-Dialog-Icon-AlertNew") end
@@ -577,6 +595,7 @@ local function MakeCard(page, parent, i)
     ns.UI.Refresh()
   end)
   c.acInspect = function(self, pane) FillInspector(page, self.macro, pane) end
+  c.acPromptA = function(self) return (self.macro and page.selected == self.macro) and "Details" or "Select" end
   -- A / Enter: select; on the macro already selected (D-pad focus selects),
   -- step into the Inspector so its Home links and buttons are reachable
   -- without a mouse. B comes back to this card (page.Back).
@@ -653,6 +672,7 @@ local function FillCard(page, c, m)
   c.icon:SetTexture(DisplayIcon(m))
   c.icon:SetDesaturated(st == "blocked" or st == "taken")
   c.icon:SetAlpha(st == "blocked" and 0.6 or 1)
+  c.star:SetShown(L.ForMySpec(m))
   local word, color = Badge(m, st, why)
   -- Untested: the warning triangle carries a word. Without another badge it
   -- is the badge ("Untested", orange); next to one, the line starts with it.
@@ -865,11 +885,24 @@ local function BuildSearch(page, f)
   box:HookScript("OnArrowPressed", function(self, key)
     if key == "DOWN" then self:ClearFocus(); FocusFirstCard(page) end
   end)
-  UI.Node(box, { style = "row", id = "macros:search", activate = function(self) self:SetFocus() end })
+  UI.Node(box, { style = "row", id = "macros:search", activate = function(self)
+    self:SetFocus()
+    UI.RefreshPrompts() -- B now reads Back (it clears, then leaves the box)
+  end })
+  box:HookScript("OnEditFocusGained", function() UI.RefreshPrompts() end)
+  box:HookScript("OnEditFocusLost", function() UI.RefreshPrompts() end)
+  box.acPromptA = "Type"
+  -- Moving on with the D-pad or the arrows hands the keyboard back, so the
+  -- box never keeps typing focus behind the focus ring.
+  box.acOnBlur = function(self) if self.HasFocus and self:HasFocus() then self:ClearFocus() end end
   box.navDown = function() return page.chips[1]:IsShown() and page.chips[1] or page.cards[1] end
   box.acInspect = function(_, pane)
     BookHeader(pane, "Interface\\Icons\\INV_Misc_Spyglass_03", "Search", "Macros")
     pane:Text("Finds macros by name, description and tag. A or Ctrl+F types; Enter or Down goes to the results; Esc clears, then leaves.")
+    -- The game never asks Steam for its keyboard (no such call in the
+    -- Forever API), so on the Deck typing needs Steam + X.
+    pane:Text("On a controller you don't need it: For You / Everything (X), the tag chips and More... (every tag) filter the book. "
+      .. "To type on the Steam Deck: A here, then Steam + X opens Steam's keyboard; B clears, then leaves.", UI.C.DISABLED)
   end
   page.search = box
 end
@@ -974,9 +1007,45 @@ local macrosPage = ns.RegisterPage({
       moreText:SetPoint("CENTER", page.more, "CENTER", 0, -1)
     end
     UI.Node(page.more, { style = "button", id = "macros:more" })
+    -- Every tag, also as toggles in the Inspector: the dropdown menu is the
+    -- mouse route; with a controller or the keys, A on More... steps into
+    -- this list (no menu to drive), A toggles a tag, B comes back.
     page.more.acInspect = function(_, pane2)
       BookHeader(pane2, "Interface\\Icons\\INV_Misc_Book_09", "Every tag", "Filter")
-      pane2:Text("Opens the full tag list: class, race, profession, topic and status. Tags combine.")
+      pane2:Text("Every tag, as the More... menu lists them. Tags combine.", UI.C.DISABLED)
+      local tags, counts = AvailableTags(page)
+      table.sort(tags, function(a, b)
+        local oa, ob = L.tagTypes[a.type].order, L.tagTypes[b.type].order
+        if oa ~= ob then return oa < ob end
+        return a.label < b.label
+      end)
+      local lastType, list
+      local function Flush() if list and #list > 0 then pane2:CrossRef(list) end end
+      for _, t in ipairs(tags) do
+        if t.type ~= lastType then
+          Flush()
+          pane2:Section(TYPE_TITLES[t.type] or t.type)
+          lastType, list = t.type, {}
+        end
+        local on = page.filters[t.key] == true
+        list[#list + 1] = { text = (on and CHECK_OK or CHECK_OFF) .. " " .. t.label .. " (" .. counts[t.key] .. ")",
+          fn = function() ToggleTag(page, t.key) end, id = "tagref:" .. t.key }
+      end
+      Flush()
+      if next(page.filters) or page.query ~= "" then
+        pane2:CrossRef({ { text = "Clear tags and search", fn = function() ResetFilters(page) end, id = "tagref:clear" } })
+      end
+    end
+    page.more.acPromptA = "Tags"
+    page.more.acActivate = function(self, source)
+      local F = ns.Focus
+      F:Inspect(self)
+      for _, n in ipairs(F:Nodes()) do
+        if F.ZoneOf(n) == "inspector" and type(rawget(n, "acId")) == "string" and n.acId:find("^tagref:") then
+          F:Set(n, source or "key")
+          return
+        end
+      end
     end
 
     -- The book: 12 cards, then the page buttons.
@@ -1075,6 +1144,9 @@ local macrosPage = ns.RegisterPage({
   Back = function(page)
     local F = ns.Focus
     if not (F and F.current and F.ZoneOf(F.current) == "inspector") then return false end
+    -- Only a card's Inspector; the tag list (More...) goes back to More...
+    -- through the shared Inspector Back (Esc.InspectorBackTarget).
+    if F.inspected and not rawget(F.inspected, "acMacroCard") then return false end
     local card = page.selected and page.cardFor and page.cardFor[page.selected.name]
     if not (card and card:IsShown() and card.macro == page.selected) then return false end
     F:Set(card, F.source or "pad")

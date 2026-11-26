@@ -9,7 +9,7 @@
 --   pane:Layers(list)                                { {label, icon, name, color}, ... }
 --   pane:Diff(now, after)                            { icon, name, color } -> { icon, name, color }
 --   pane:Text(text [, color])                        wrapped body text
---   pane:CrossRef(list)                              { {text, fn, color}, ... }: focusable "Also on" lines
+--   pane:CrossRef(list)                              { {text, fn, color, id}, ... }: focusable "Also on" lines (id: a stable acId)
 --   pane:Code(text)                                  read-only macro text, 7 lines
 --   pane:Buttons(list)                               { {label, fn, enabled, confirm, tooltip}, ... } docked at the bottom
 --   pane:Empty(text)                                 a dim hint
@@ -429,7 +429,7 @@ function Pane:CrossRef(list)
     b.fs:SetText(e.text or e[1] or "")
     self:Paint(b.fs, e.color or e[3])
     b.fn = e.fn or e[2]
-    b.acId = "xref:" .. tostring(e.text or e[1])
+    b.acId = e.id or ("xref:" .. tostring(e.text or e[1]))
     b:SetEnabled(b.fn ~= nil)
     b.acReadable = true
     -- A long link wraps to a second line instead of being cut off. The
@@ -636,7 +636,12 @@ function UI.NewInspector(host)
     for _, n in ipairs(F:Nodes()) do
       local p = n
       while p and p ~= self.child do p = p.GetParent and p:GetParent() end
-      if p and not F.Clipped(n, self.scroll) then F:Set(n, F.source == "mouse" and "mouse" or "key", true, true) break end
+      if p and not F.Clipped(n, self.scroll) then
+        F:Set(n, F.source == "mouse" and "mouse" or "key", true, true)
+        -- The Gamepad UI cursor follows (a right-stick scroll moved focus).
+        if ns.Input and ns.Input.PointSmartNav then ns.Input.PointSmartNav(n) end
+        break
+      end
     end
     self.fixing = nil
   end

@@ -195,3 +195,13 @@ test("professions: a primary whose own spell sits outside its skill line keeps i
   noErrors(env)
   eq(env:slotText(Pad(2, "LT+RT A")), "spell:Mining", "Mining on its primary slot")
 end)
+
+test("professions: the Legacy perk Dedicated Study takes the next profession slot", function()
+  local env = H.boot({ fixture = "warrior", professions = HERB_ALCH, loaded = Bars56, setup = function(W)
+    table.insert(W.fixture.spells, { name = "Dedicated Study", id = 1300901, icon = 136240 })
+  end })
+  eq(Names(env.ns.modules.actionbars.ProfessionSpells()), "Herbalism, Alchemy, Find Herbs, Dedicated Study")
+  env:slash("controller apply")
+  noErrors(env)
+  eq(env:slotText(Pad(2, "LT+RT B")), "spell:Dedicated Study", "4th profession slot")
+end)

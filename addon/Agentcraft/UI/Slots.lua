@@ -389,6 +389,8 @@ function UI.PadBar(parent, layer, size)
     self.expanded = on
     self.section:SetShown(on)
   end
-  UI.MarkIgnored(bar)
+  -- Not a Gamepad UI stop itself; its slots inside are (a plain ignore mark
+  -- would hide them too).
+  UI.MarkContainer(bar)
   return bar
 end

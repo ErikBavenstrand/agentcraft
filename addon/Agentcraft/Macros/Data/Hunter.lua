@@ -12,7 +12,7 @@ local L = ns.MacroLibrary
 
 -- Combat -----------------------------------------------------------------------
 
-L.Add({ name = "Arcane", category = "combat", class = "HUNTER", order = 30, perCharacter = true, tags = { "rotation" },
+L.Add({ name = "Arcane", category = "combat", class = "HUNTER", order = 30, perCharacter = true, specs = { "bm", "mm", "sv" }, tags = { "recommended", "rotation" },
   icon = "Arcane Shot", requires = { "Arcane Shot" },
   desc = "Arcane Shot that also starts Auto Shot (never toggles it off).",
   body = "#showtooltip Arcane Shot\n/cast !Auto Shot\n/cast [@target,harm,nodead] Arcane Shot" })
@@ -24,30 +24,30 @@ L.Add({ name = "FDTrap", category = "combat", class = "HUNTER", order = 61, perC
   desc = "Traps can't be laid in combat. Press in combat to Feign Death (drops combat), press again to lay Freezing Trap. Your pet comes back to you.",
   body = "#showtooltip Freezing Trap\n/stopattack\n/petfollow\n/cast Freezing Trap\n/cast [combat] Feign Death" })
 
-L.Add({ name = "Opener", category = "combat", class = "HUNTER", order = 15, perCharacter = true, tags = { "opener", "controller" },
+L.Add({ name = "Opener", category = "combat", class = "HUNTER", order = 15, perCharacter = true, specs = { "bm", "mm", "sv" }, tags = { "recommended", "opener", "controller" },
   icon = "Hunter's Mark", requires = { "Hunter's Mark" },
   desc = "Drops a dead or friendly target, picks the nearest enemy if you have none, then Hunter's Mark and Auto Shot. Your pet stays where it is.",
   body = "#showtooltip Hunter's Mark\n/cleartarget [dead][help]\n/targetenemy [noexists]\n/cast Hunter's Mark\n/cast !Auto Shot" })
 
-L.Add({ name = "Melee", category = "combat", class = "HUNTER", order = 40, perCharacter = true, tags = { "melee", "controller" },
+L.Add({ name = "Melee", category = "combat", class = "HUNTER", order = 40, perCharacter = true, specs = { "sv" }, tags = { "recommended", "melee", "controller" },
   icon = "Raptor Strike", requires = { "Raptor Strike" }, untested = true,
   desc = "Starts melee and uses whichever is ready: Counterattack (after a parry), Mongoose Bite (after a dodge), else Raptor Strike. Spells you don't know are skipped.",
   body = "#showtooltip Raptor Strike\n/startattack\n/cast Counterattack\n/cast Mongoose Bite\n/cast Raptor Strike" })
 L.previous.Melee = { "#showtooltip Raptor Strike\n/cast Mongoose Bite\n/cast Raptor Strike" }
 
-L.Add({ name = "Burst", category = "combat", class = "HUNTER", order = 50, perCharacter = true, tags = { "cooldown", "controller" },
+L.Add({ name = "Burst", category = "combat", class = "HUNTER", order = 50, perCharacter = true, specs = { "bm", "mm", "sv" }, tags = { "recommended", "cooldown", "controller" },
   icon = "Rapid Fire", requires = { "Rapid Fire" }, untested = true,
   desc = "Every damage cooldown at once: Bestial Wrath, both trinkets, Berserking or Blood Fury, then Rapid Fire. Anything you don't have is skipped.",
   body = "#showtooltip Rapid Fire\n/cast Bestial Wrath\n/use 13\n/use 14\n/cast Berserking\n/cast Blood Fury\n/cast Rapid Fire" })
 
-L.Add({ name = "FD", category = "combat", class = "HUNTER", order = 60, perCharacter = true, tags = { "defensive", "controller" },
+L.Add({ name = "FD", category = "combat", class = "HUNTER", order = 60, perCharacter = true, specs = { "bm", "mm" }, tags = { "recommended", "defensive", "controller" },
   icon = "Feign Death", requires = { "Feign Death" },
   desc = "A clean Feign Death: stops your cast and attacks, calls your pet back, then feigns.",
   body = "#showtooltip Feign Death\n/stopcasting\n/stopattack\n/petfollow\n/cast Feign Death" })
 
 -- Pet --------------------------------------------------------------------------
 
-L.Add({ name = "PetCare", category = "pet", class = "HUNTER", order = 5, perCharacter = true, tags = { "controller" },
+L.Add({ name = "PetCare", category = "pet", class = "HUNTER", order = 5, perCharacter = true, specs = { "bm" }, tags = { "recommended", "controller" },
   icon = "Mend Pet", requires = { "Mend Pet" }, untested = true,
   desc = "Calls your pet if it's missing, revives it if it's dead (even after its body is gone), otherwise heals it with Mend Pet.",
   body = "#showtooltip\n/cast [nopet] Call Pet\n/cast [@pet,dead][nopet] Revive Pet; Mend Pet" })
@@ -151,3 +151,27 @@ L.Add({ name = "Eyes", category = "pet", class = "HUNTER", order = 85, perCharac
   icon = "Eyes of the Beast", requires = { "Eyes of the Beast" }, untested = true,
   desc = "One button into and out of Eyes of the Beast.",
   body = "#showtooltip Eyes of the Beast\n/stopcasting [channeling:Eyes of the Beast]\n/cast [nochanneling,@pet,exists,nodead] Eyes of the Beast" })
+
+-- Recommended per spec (owner, 2026-11-26) ---------------------------------------
+-- Wowhead Classic hunter macro guide, adapted to WoW Forever:
+--   [WH] https://www.wowhead.com/classic/guide=8718 (Hunter macros)
+-- Its Auto Shot, Initiation and Target Enemy macros are Opener and Arcane
+-- (without /petattack), its Melee macro is Melee, its Feign Death - Trap
+-- macro is FDTrap (/petfollow instead of /petpassive). Scatter and
+-- Deterrence below are its Scatter Shot and Monkey/Deterrence macros.
+-- Left out: /petattack and /petpassive macros (owner rules), the one-line
+-- Growl, /petstay and /petfollow (Recall has /petfollow), the downranked
+-- Wing Clip (rank names), and the @cursor Flare / Eagle Eye and @mouseover
+-- Scatter Shot / Hunter's Mark PvP macros.
+
+L.Add({ name = "Scatter", category = "combat", class = "HUNTER", order = 62, perCharacter = true,
+  specs = { "mm" }, tags = { "recommended", "crowd control", "controller" },
+  icon = "Scatter Shot", requires = { "Scatter Shot" }, untested = true,
+  desc = "Calls your pet back, then Scatter Shot on your enemy target, so the pet's hits don't break the disorient before your trap (Marksmanship talent, level 30). [WH]",
+  body = "#showtooltip Scatter Shot\n/petfollow\n/cast [@target,harm,nodead] Scatter Shot" })
+
+L.Add({ name = "Deterrence", category = "combat", class = "HUNTER", order = 63, perCharacter = true,
+  specs = { "sv" }, tags = { "recommended", "defensive", "controller" },
+  icon = "Deterrence", requires = { "Deterrence", "Aspect of the Monkey" }, untested = true,
+  desc = "Panic button: Aspect of the Monkey (never toggled off if it's already on) and Deterrence in one press, both raising your dodge (Survival talent, level 20). [WH]",
+  body = "#showtooltip Deterrence\n/cast !Aspect of the Monkey\n/cast Deterrence" })

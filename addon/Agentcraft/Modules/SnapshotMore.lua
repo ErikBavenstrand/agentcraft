@@ -435,6 +435,20 @@ M.AddSection("controller", function()
     end
     out.gamepadBars = pages
     out.gamepadFirstActionSlot = Try(C_GamepadUI.GetFirstGamepadActionStorageSlotIndex)
+    -- The stance bar: which bar it replaces, and each stance's 8 slots.
+    local C = ns.modules.controller
+    local st = { override = C_CVar and Try(C_CVar.GetCVar, "GamepadStanceBarOverride"),
+      activeFirst = C_GamepadUI.GetFirstGamepadActionBarStorageSlotIndexForActiveStance
+        and Try(C_GamepadUI.GetFirstGamepadActionBarStorageSlotIndexForActiveStance) }
+    for _, row in ipairs(C and C.StanceList and C.StanceList() or {}) do
+      local names = {}
+      for k = 0, 7 do
+        local d = ns.UI and ns.UI.DescribeSlot and ns.UI.DescribeSlot(row.first + k)
+        names[#names + 1] = (row.first + k) .. " " .. (d and d.name or "?")
+      end
+      st["offset " .. row.offset .. (row.seen and " (seen)" or " (inferred)")] = names
+    end
+    out.stanceBar = st
   else
     out.gamepadBars = "controller action bars not loaded (turn on the Gamepad UI)"
   end
@@ -468,6 +482,18 @@ M.AddSection("apiProbe", function()
   if issecretvalue then out["player health is secret"] = Try(function() return issecretvalue(UnitHealth("player")) end) end
   if C_Secrets and C_Secrets.HasSecretRestrictions then out["secret restrictions active"] = Try(C_Secrets.HasSecretRestrictions) end
   out["health %"] = Try(UnitHealthPercent, "player")
+  -- Legacy perks (Talented, Dedicated Study...): which API, if any, reads them.
+  local legacy = {}
+  for k, v in pairs(_G) do
+    if type(k) == "string" and k:find("Legacy") and (type(v) == "table" or type(v) == "function") then
+      local fns = {}
+      if type(v) == "table" and k:match("^C_") then for f in pairs(v) do fns[#fns + 1] = tostring(f) end end
+      table.sort(fns)
+      legacy[#legacy + 1] = k .. (#fns > 0 and (": " .. table.concat(fns, ", ")) or "")
+    end
+  end
+  table.sort(legacy)
+  if #legacy > 0 then out["Legacy APIs"] = table.concat(legacy, " | ") end
   out["power %"] = Try(UnitPowerPercent, "player")
   if C_PetInfo then
     local fns = {}

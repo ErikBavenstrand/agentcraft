@@ -139,7 +139,7 @@ The controller does not page: the Gamepad UI's storage slots depend on the gamep
 
 - Page 1, Combat: RT face = ranged rotation, LT face = melee, the D-pad (thumb off the stick) = stand-still casts, LT+RT = rare spells, `none` D-pad = radials and out-of-combat basics.
 - Page 2, Utility: only the class's own buttons, on the RT layer (resurrects, summons, pet care, buffs, conjures, portals) and `LT X B Y Left Right`. The shared buttons fill the rest (below); leave `RT Up`, `LT A`, `LT Up`, `LT Down`, the `none` D-pad and all of LT+RT out of the class page.
-- Page 3, Extras: `petauto` toggles (pet classes), Steam Deck helper macros (`none` D-pad: Reload, Follow, Focus, Assist; `LT+RT A` Skull) and `overflow` everywhere else.
+- Page 3, Extras: `petauto` toggles (pet classes), Steam Deck helper macros (`none` D-pad: Reload, Follow, Focus, Assist; `LT+RT A` Skull) and `overflow` everywhere else but `LT+RT Y`, which is shared (the Agentcraft macro, below).
 
 `paddles = {}` (back buttons left free by the owner).
 
@@ -163,6 +163,12 @@ Page 2:
 | `none Down` | `{ "Basic Campfire" }` |
 | `none Right` | `{ macro = "Mount" }` (waits until installed) |
 | `LT+RT A Y X B Down Up Left Right` | `{ profession = 1 }` ... `{ profession = 8 }`, in that button order |
+
+Page 3:
+
+| Button | Entry |
+| --- | --- |
+| `LT+RT Y` | `{ macro = "Agentcraft" }` (`/ac`: opens the window from the pad; waits until installed) |
 
 The LT layer is the item layer: Bait, the four consumable macros and the trinkets. The item macro homes take their macro only once you install it on the Macros page (Apply never creates one) and wait with "Waiting · install <name> on the Macros page" until then; your own button on a waiting Alt key stays until you install the macro.
 

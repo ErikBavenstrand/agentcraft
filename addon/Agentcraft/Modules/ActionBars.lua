@@ -112,7 +112,7 @@ local PET_SPELLS = {
 local PROFESSIONS = {
   "Alchemy", "Blacksmithing", "Enchanting", "Disenchant", "Engineering",
   "Leatherworking", "Tailoring", "Mining", "Smelting", "Herbalism", "Skinning",
-  "Cooking", "Basic Campfire", "Fishing", "First Aid", "Pick Lock", "Survey",
+  "Cooking", "Basic Campfire", "Fishing", "First Aid", "Pick Lock", "Survey", "Dedicated Study",
 }
 local PROFESSION_RANK = {}
 for i, name in ipairs(PROFESSIONS) do PROFESSION_RANK[name] = i end

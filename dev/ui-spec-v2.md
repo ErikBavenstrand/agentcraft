@@ -163,6 +163,7 @@ How icon-only tabs stay readable: the page title names the current page, and the
 Blizzard's SmartNavigation drives the D-pad (move), A (click) and B (close handler), and the right stick scrolls the registered scroll frame ([SmartNavigation.lua](https://github.com/Gethe/wow-ui-source/blob/forever/Interface/AddOns/Blizzard_GamepadSmartNavigation/SmartNavigation.lua)). Its `FocusEnter` runs our `OnEnter`, so `ns.Focus` stays in sync. We add:
 
 - `btn.OnSmartNavSelect = function(b) ns.Focus:Set(b, "pad") end` on every node.
+- (2026-11-24, see dev/ui-rules.md rule 24) `btn.OnSmartNavClick` on every node runs `Focus:Activate("pad")` (SmartNavigation:Click calls it instead of a plain click), and every node gets a `SmartNavigation_AddJumpNavigationOverride` function per direction that runs `Focus:Move` and returns where focus went (`true` = stay). So the Deck's D-pad walks the window's own focus graph (explicit nav*, Choice-row steps, page turns). The overrides are cleared at PLAYER_REGEN_DISABLED and re-added after combat, because SmartNavigation refuses insecure overrides in combat.
 - `frame.FocusGamepad` → `Input.BindPad(true)`; `frame.UnfocusGamepad` → `Input.BindPad(false)`.
 - `frame.SmartNavigationCloseHandler = function() return ns.Esc.Pop() end`. It returns true while a layer was popped; when the stack is empty it returns false, so FCM clicks the CloseButton.
 - Our own override bindings, owned by the frame with priority true, set only while FCM has given us focus and out of combat:

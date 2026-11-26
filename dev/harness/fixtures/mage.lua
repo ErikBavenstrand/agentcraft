@@ -1,7 +1,7 @@
 -- A level 60 Human mage (Alliance, so the Alliance teleports and portals).
 -- Format: dev/layout-format.md ("Fixture format"). Spell IDs are Classic
--- ranks where one exists; spells new in WoW Forever (Frostfire Bolt,
--- Teleport: Dalaran and the new talents) use made-up 125xxxx IDs. Only names
+-- ranks where one exists; spells new in WoW Forever (Frostfire Bolt, Frost Blast,
+-- Teleport: Dalaran, the new talents) use made-up 125xxxx IDs. Only names
 -- and IDs staying consistent matters. Fields left out (items, bags,
 -- equipped) get defaults in harness.lua: a Hearthstone in the backpack.
 return {
@@ -43,6 +43,7 @@ return {
     { name = "Scorch", id = 10207 },
     { name = "Frost Ward", id = 28609 },
     { name = "Counterspell", id = 2139 },
+    { name = "Frost Blast", id = 1250006 },
     { name = "Cone of Cold", id = 10161 },
     { name = "Conjure Mana Agate", id = 759 },
     { name = "Conjure Mana Jade", id = 3552 },
